@@ -247,7 +247,8 @@ def instinct_x2_parkour_amp_env_cfg(
     cfg.scene.env_spacing = 2.5
     cfg.episode_length_s = 20.0
     cfg.sim.nconmax = 128
-    cfg.sim.njmax = 700
+    # X2's six-dimensional capsule contacts exceed G1's constraint budget on stairs.
+    cfg.sim.njmax = 2048
     cfg.sim.contact_sensor_maxmatch = 128
     cfg.sim.mujoco.iterations = 10
     cfg.sim.mujoco.ls_iterations = 20

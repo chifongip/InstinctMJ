@@ -1,8 +1,8 @@
 # Parkour Task
 
-The registered parkour tasks currently target G1. The [X2 asset notes](../../assets/resources/agibot_x2/README.md)
+The registered parkour tasks target G1 and Agibot X2. The [X2 asset notes](../../assets/resources/agibot_x2/README.md)
 and [X2 configuration guide](#agibot-x2) cover the robot, camera and reference
-motions and the X2 environment factory. X2 training/play task IDs are not yet registered.
+motions, environment factory and RL configuration for X2.
 
 ## Basic Usage Guidelines
 
@@ -219,13 +219,31 @@ Other reward weights, commands and curricula start from G1's settings and still
 need X2 training evaluation. Holding the nominal joint targets alone is not a
 balance controller; sustained standing still needs feedback control.
 
-The environment factory is available for direct simulation checks. An X2 RL
-runner configuration, task registration and training validation remain pending.
+### Training and playback
+
+X2 follows G1's `rl_cfg.py` and registration layout, with its own experiment
+name, `x2_parkour`. The initial runner uses the same depth encoder, four-expert
+MoE policy, WasabiPPO discriminator and PPO hyperparameters as G1.
+
+```bash
+uv run instinct-train Instinct-Parkour-Target-Amp-X2-v0 --device cuda:0
+uv run instinct-play Instinct-Parkour-Target-Amp-X2-Play-v0 --load-run <run_name>
+```
+
+Both registered IDs provide train/play factories. Training requires CUDA.
+The X2 constraint buffer uses 2048 rows: the initial stair-scene check exceeded
+G1's 700-row budget before policy construction. Long training, reward tuning
+and evaluation across the full terrain curriculum remain necessary.
 
 CPU validation covered both factory modes, compiled PD gains/torque limits, all
 50 motion clips, matching AMP dimensions, normalized depth observations, and
 automatic/partial resets on small rough-ground and stair/gap scenes. This does
 not establish training convergence or performance at the default 2048 environments.
+
+A four-environment CUDA smoke run completed three 24-step AMP/PPO iterations
+and saved a checkpoint. Reloading it into a fresh registered X2 play environment
+passed 40 inference steps. All 123 recorded scalar series were finite. This
+verifies the training/checkpoint path, not learned parkour ability.
 
 ### Depth camera
 
@@ -300,8 +318,8 @@ The X2 task config defines `X2_PARKOUR_REFERENCE_LINK_NAMES` and
 `X2_PARKOUR_SYMMETRIC_LINK_MAPPING` for 14 reference links, following G1's
 semantic ordering and using X2's terminal wrist-roll links. The motion-reference
 manager uses these as `link_of_interests` and `symmetric_augmentation_link_mapping`,
-with the two joint augmentation fields supplied by the asset buffers. Task
-registration is still pending.
+with the two joint augmentation fields supplied by the asset buffers. Both
+registered tasks use these settings.
 
 The model has small authored left/right differences, so reflected FK poses are
 approximate, especially in the arms. Waist yaw bounds are also asymmetric;

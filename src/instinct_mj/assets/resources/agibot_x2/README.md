@@ -59,9 +59,9 @@ and decimation 20 for a 50 Hz policy.
 
 See the [parkour notes](../../../tasks/parkour/README.md#agibot-x2) for camera
 configuration, retargeting and side-by-side replay. X2 motions and the robot
-must both use the torso-root convention. A complete X2 parkour task is not yet
-registered. The environment factory connects sensors, motion references and
-symmetry mappings; RL configuration, registration and training validation remain.
+must both use the torso-root convention. X2 train/play tasks are registered,
+with environment and RL configs following G1's structure. Long training, reward
+tuning and full-curriculum evaluation remain.
 
 The 35 referenced STL meshes and this directory's `LICENSE` come from
 `agibot_x2_urdf`. Model and mesh assets retain their upstream Mulan PSL v2 license.
