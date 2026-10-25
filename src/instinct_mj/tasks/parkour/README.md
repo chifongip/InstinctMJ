@@ -2,7 +2,7 @@
 
 The registered parkour tasks currently target G1. The [X2 asset notes](../../assets/resources/agibot_x2/README.md)
 and [X2 configuration guide](#agibot-x2) cover the robot, camera and reference
-motions prepared for an X2 task, which is not yet registered.
+motions and the X2 environment factory. X2 training/play task IDs are not yet registered.
 
 ## Basic Usage Guidelines
 
@@ -186,6 +186,47 @@ This matters because `instinct_onboard/instinct_onboard/agents/base.py` and `ins
 
 ## Agibot X2
 
+### Environment factory
+
+`config/agibot_x2/x2_parkour_target_amp_cfg.py` follows G1's scene/environment
+classes and base/final factories, using shared parkour MDP and terrain components:
+
+```python
+from instinct_mj.tasks.parkour.config.agibot_x2.x2_parkour_target_amp_cfg import (
+    instinct_x2_parkour_amp_final_cfg,
+)
+
+cfg = instinct_x2_parkour_amp_final_cfg(play=False)
+# Optional: dataset_dir="/path/to/x2_parkour_motion_reference"
+```
+
+The factory uses X2's fixed-head torso-root model, nominal pose and `agibot_stiff`
+gains. All 29 movable joints are policy-controlled, matching G1 parkour's
+full-body action layout. Physics runs at 1 kHz (the source XML timestep), with
+20 substeps per 50 Hz policy/AMP step and no actuator delay.
+
+Motion loading defaults to `checkpoint/parkour/x2_parkour_motion_reference/`
+relative to this checkout, selecting only the 50 discontinuity-free clips.
+Joint and link symmetry buffers are connected to the motion-reference manager.
+The policy, critic, AMP policy and AMP reference groups follow G1's layout.
+Depth observations contain eight normalized 80x50 frames; the task adds blur
+and 37 samples of history to the raw camera helper, preserving its full FOV
+and upside-down mounting.
+
+Contact sensors use X2's authored collisions. Foot volume bounds include the
+capsules' 0.015 m radius, and the foot-height reward uses a 0.0732 m sole offset.
+Other reward weights, commands and curricula start from G1's settings and still
+need X2 training evaluation. Holding the nominal joint targets alone is not a
+balance controller; sustained standing still needs feedback control.
+
+The environment factory is available for direct simulation checks. An X2 RL
+runner configuration, task registration and training validation remain pending.
+
+CPU validation covered both factory modes, compiled PD gains/torque limits, all
+50 motion clips, matching AMP dimensions, normalized depth observations, and
+automatic/partial resets on small rough-ground and stair/gap scenes. This does
+not establish training convergence or performance at the default 2048 environments.
+
 ### Depth camera
 
 Like G1, X2 configures its camera at task level, in
@@ -257,10 +298,10 @@ in X2's native joint order. Waist roll/pitch/yaw signs are `[-1, +1, -1]`.
 
 The X2 task config defines `X2_PARKOUR_REFERENCE_LINK_NAMES` and
 `X2_PARKOUR_SYMMETRIC_LINK_MAPPING` for 14 reference links, following G1's
-semantic ordering and using X2's terminal wrist-roll links. When adding the
-motion-reference manager, copy these into `link_of_interests` and
-`symmetric_augmentation_link_mapping`, and set the two joint augmentation fields
-from the asset buffers. The mappings are prepared; an X2 environment is not yet registered.
+semantic ordering and using X2's terminal wrist-roll links. The motion-reference
+manager uses these as `link_of_interests` and `symmetric_augmentation_link_mapping`,
+with the two joint augmentation fields supplied by the asset buffers. Task
+registration is still pending.
 
 The model has small authored left/right differences, so reflected FK poses are
 approximate, especially in the arms. Waist yaw bounds are also asymmetric;

@@ -52,15 +52,16 @@ Torque limits follow the supplied XML: hips/knees/waist yaw use 120 Nm and wrist
 pitch/roll use 4.8 Nm, rather than the gain source's 118 and 2.2 Nm. Action scale
 is `0.25 * effort_limit / stiffness`. The asset preserves XML armature (0.03),
 friction loss (0.3) and passive damping, uses a 0.9 soft position-limit factor,
-and assumes no actuator delay. The task must choose its timestep and decimation.
+and assumes no actuator delay. The parkour factory uses a 1 ms physics timestep
+and decimation 20 for a 50 Hz policy.
 
 ## Parkour integration
 
 See the [parkour notes](../../../tasks/parkour/README.md#agibot-x2) for camera
 configuration, retargeting and side-by-side replay. X2 motions and the robot
 must both use the torso-root convention. A complete X2 parkour task is not yet
-registered; reward/sensor geometry, motion-reference integration and rollout validation
-remain to be implemented.
+registered. The environment factory connects sensors, motion references and
+symmetry mappings; RL configuration, registration and training validation remain.
 
 The 35 referenced STL meshes and this directory's `LICENSE` come from
 `agibot_x2_urdf`. Model and mesh assets retain their upstream Mulan PSL v2 license.
