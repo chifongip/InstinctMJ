@@ -75,6 +75,10 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 instinct_mj = [
+  "assets/resources/agibot_x2/*.xml",
+  "assets/resources/agibot_x2/*.md",
+  "assets/resources/agibot_x2/LICENSE",
+  "assets/resources/agibot_x2/meshes/*.STL",
   "assets/resources/unitree_g1/*.xml",
   "assets/resources/unitree_g1/xml/*.xml",
   "assets/resources/unitree_g1/urdf/*.urdf",

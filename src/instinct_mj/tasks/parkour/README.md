@@ -1,5 +1,9 @@
 # Parkour Task
 
+The registered parkour tasks currently target G1. The [X2 asset notes](../../assets/resources/agibot_x2/README.md)
+and [X2 configuration guide](#agibot-x2) cover the robot, camera and reference
+motions prepared for an X2 task, which is not yet registered.
+
 ## Basic Usage Guidelines
 
 ### Parkour Task
@@ -179,3 +183,87 @@ This matters because `instinct_onboard/instinct_onboard/agents/base.py` and `ins
 - `--video`: Record training/playback videos
 - `--export-onnx`: Export the trained model to ONNX format for onboard deployment during playing
 - `--use-onnx`: Use the ONNX model for inference during playing
+
+## Agibot X2
+
+### Depth camera
+
+Like G1, X2 configures its camera at task level, in
+`config/agibot_x2/x2_parkour_target_amp_cfg.py`:
+
+```python
+from instinct_mj.tasks.parkour.config.agibot_x2.x2_parkour_target_amp_cfg import (
+    get_agibot_x2_depth_camera_cfg,
+)
+
+cfg.scene.sensors = (*cfg.scene.sensors, get_agibot_x2_depth_camera_cfg())
+```
+
+The `rgbd_head_front` URDF mount is relative to `head_pitch_link`: position
+`(0.05761, -0.011183, -0.04837)` m and RPY `(2.2689, 0, 1.5708)` rad.
+Using ROS optical axes (+Z forward, +X right, +Y down), the raw image is upside
+down and the camera points approximately 40 degrees downward. Match any hardware
+image rotation in training; the factory preserves the raw mounting orientation.
+
+The [Gemini335 specifications](https://x2-aimdk.agibot.com/en/latest/about_agibot_X2/sensor_fov.html#rgbd)
+give a depth FOV of 90 x 65 degrees and resolution up to 1280x800. The factory
+sets both FOV axes explicitly, defaults to 80x50, and follows the head's full
+pose. Its 30 Hz update period matches the published
+[depth-image topic rate](https://x2-aimdk.agibot.com/en/latest/Interface/hal/sensor.html).
+The 2.5 m clipping limit is a task default. Noise, preprocessing and history are
+left to the task; measured calibration and driver rotation need hardware checks.
+
+### Motion references
+
+Run the adapter in the installed retargeter environment:
+
+```bash
+conda run --no-capture-output -n robot_retargeter python \
+  src/instinct_mj/scripts/retarget_parkour_motion.py
+```
+
+Defaults are `~/robot_retargeter` for the tool, `checkpoint/parkour/parkour_motion_reference/`
+for the source, and `checkpoint/parkour/x2_parkour_motion_reference/` for output.
+Use `--retargeter`, `--input-dir`, `--output-dir`, `--max-frames` and `--overwrite`
+to override them. Intermediate CSVs, keypoints and IK models are temporary.
+The original dataset is preserved.
+
+The adapter maps source joints by name, extracts/scales targets using the tool,
+and runs contact-aware Mink/DAQP IK against X2's pelvis-root kinematics with the
+head fixed. It then exports torso-root poses and negated waist coordinates,
+checking world-space body-pose equivalence against the training model. Extra
+retargeter knee/elbow limit offsets are disabled; XML joint bounds are enforced.
+Output NPZ fields are `framerate`, `joint_names`, `joint_pos`, `base_pos_w` and
+`base_quat_w` (wxyz), with joints in X2's native torso-base order.
+
+The supplied dataset contains 18,982 frames at 50 Hz. Its 49 root jumps above
+0.2 m/frame divide it into 50 clips. Select **`parkour_motion_without_run_clips.yaml`**
+for training so velocity estimates and AMP histories do not cross those cuts.
+Length-proportional `motion_weights` preserve the source time distribution.
+The full sequence and its original selection YAML are also retained. Always
+use a selection YAML to avoid loading both full and split copies.
+
+`retargeting_report.json` records provenance and conversion checks. The current
+dataset's `validation_report.json` contains additional FK diagnostics. Retargeting
+is kinematic; visual/contact review and dynamic feasibility checks remain necessary.
+
+### Comparison video
+
+With `ffmpeg` and offscreen EGL rendering available:
+
+```bash
+MUJOCO_GL=egl uv run --no-sync python src/instinct_mj/scripts/compare_parkour_motions.py
+```
+
+This writes an MP4, PNG preview and recording metadata under
+`videos/motion_comparison/`. The default is 1280x720 at 25 fps, showing every other
+50 Hz source frame at real-time speed; `--fps 50` includes every frame. Both panels
+share frame indices and camera angles. Cameras follow recorded XY trajectories
+over a fixed floor, preserving robot poses so foot motion remains interpretable.
+Labels identify timestamps, source cuts and torso height. This is motion-data
+playback; contact and policy stability require separate rollout validation.
+
+For a short recording, add `--start-frame 0 --end-frame 500` and a different
+`--output` path. `--end-frame` is exclusive. Other options include `--g1-motion`,
+`--x2-motion`, `--width`, `--height` and `--overwrite`. GPU rendering is recommended
+for the full meshes.
