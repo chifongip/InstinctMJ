@@ -1,4 +1,4 @@
-"""Agibot X2 parkour sensor configuration.
+"""Agibot X2 parkour sensor and motion-reference settings.
 
 Camera settings belong to the task, following the G1 parkour configuration.
 A complete X2 environment and task registration are not defined yet.
@@ -11,6 +11,26 @@ import math
 from mjlab.sensor import ObjRef, PinholeCameraPatternCfg
 
 from instinct_mj.sensors.noisy_camera import NoisyGroupedRayCasterCameraCfg
+
+# Match G1's semantic reference-link ordering, using X2's terminal wrist links.
+# The link permutation is indexed by this list, not MuJoCo body IDs.
+X2_PARKOUR_REFERENCE_LINK_NAMES = [
+    "pelvis",
+    "torso_link",
+    "left_shoulder_roll_link",
+    "right_shoulder_roll_link",
+    "left_elbow_link",
+    "right_elbow_link",
+    "left_wrist_roll_link",
+    "right_wrist_roll_link",
+    "left_hip_roll_link",
+    "right_hip_roll_link",
+    "left_knee_link",
+    "right_knee_link",
+    "left_ankle_roll_link",
+    "right_ankle_roll_link",
+]
+X2_PARKOUR_SYMMETRIC_LINK_MAPPING = [0, 1, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12]
 
 # rgbd_head_front fixed joint in X2_URDF-v1.3.0/x2_ultra.urdf.
 # RPY=(2.2689, 0, 1.5708), ROS optical axes: +Z forward, +X right, +Y down.

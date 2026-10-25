@@ -247,6 +247,26 @@ use a selection YAML to avoid loading both full and split copies.
 dataset's `validation_report.json` contains additional FK diagnostics. Retargeting
 is kinematic; visual/contact review and dynamic feasibility checks remain necessary.
 
+### Symmetry mappings
+
+`assets/agibot_x2.py` exports G1-style joint permutation and sign buffers:
+`X2_29Dof_TorsoBase_symmetric_augmentation_joint_mapping` and
+`X2_29Dof_TorsoBase_symmetric_augmentation_joint_reverse_buf`. They mirror
+positions or velocities as `mirrored[..., i] = original[..., mapping[i]] * signs[i]`
+in X2's native joint order. Waist roll/pitch/yaw signs are `[-1, +1, -1]`.
+
+The X2 task config defines `X2_PARKOUR_REFERENCE_LINK_NAMES` and
+`X2_PARKOUR_SYMMETRIC_LINK_MAPPING` for 14 reference links, following G1's
+semantic ordering and using X2's terminal wrist-roll links. When adding the
+motion-reference manager, copy these into `link_of_interests` and
+`symmetric_augmentation_link_mapping`, and set the two joint augmentation fields
+from the asset buffers. The mappings are prepared; an X2 environment is not yet registered.
+
+The model has small authored left/right differences, so reflected FK poses are
+approximate, especially in the arms. Waist yaw bounds are also asymmetric;
+check mirrored targets against joint limits when using new datasets. All current
+18,982 reference frames pass mirrored joint-limit checks.
+
 ### Comparison video
 
 With `ffmpeg` and offscreen EGL rendering available:

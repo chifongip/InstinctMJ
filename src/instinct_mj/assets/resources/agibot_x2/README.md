@@ -28,6 +28,14 @@ cfg.actions["joint_pos"].scale = copy.deepcopy(X2_ACTION_SCALE)
   arms. G1 has a different physical waist topology; map by name instead of
   reusing its joint indices or symmetry buffers.
 
+Joint symmetry buffers use G1's `symmetric_augmentation_joint_mapping` and
+`symmetric_augmentation_joint_reverse_buf` naming, prefixed with
+`X2_29Dof_TorsoBase_`. Reflection across the torso XZ plane swaps left/right
+joints, reverses roll/yaw and preserves pitch, knee and elbow coordinates.
+These signs differ from the pelvis-to-torso conversion signs. The task config
+defines the corresponding reference-link list and permutation; see the
+[symmetry notes](../../../tasks/parkour/README.md#symmetry-mappings).
+
 Re-rooting preserves physical body frames, pivots, masses, geometry, contact
 settings and inherited joint defaults. The initial torso height is 0.8350706 m,
 keeping the original pelvis at 0.68 m and the same physical standing pose.
@@ -51,7 +59,7 @@ and assumes no actuator delay. The task must choose its timestep and decimation.
 See the [parkour notes](../../../tasks/parkour/README.md#agibot-x2) for camera
 configuration, retargeting and side-by-side replay. X2 motions and the robot
 must both use the torso-root convention. A complete X2 parkour task is not yet
-registered; reward/sensor geometry, symmetry mappings and rollout validation
+registered; reward/sensor geometry, motion-reference integration and rollout validation
 remain to be implemented.
 
 The 35 referenced STL meshes and this directory's `LICENSE` come from

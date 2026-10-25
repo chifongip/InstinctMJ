@@ -59,6 +59,75 @@ X2_JOINT_SIGNS_FROM_PELVIS: dict[str, float] = {
     name: -1.0 if name.startswith("waist_") else 1.0 for name in X2_JOINT_NAMES
 }
 
+# Reflect across the torso XZ plane, following G1's motion-reference buffer API:
+# mirrored[..., i] = original[..., mapping[i]] * reverse_buf[i].
+# Indices follow X2_JOINT_NAMES, including X2's roll-pitch-yaw waist order.
+X2_29Dof_TorsoBase_symmetric_augmentation_joint_mapping = [
+    0,  # waist roll
+    1,  # waist pitch
+    2,  # waist yaw
+    9,  # left hip pitch -> right hip pitch
+    10,  # left hip roll -> right hip roll
+    11,  # left hip yaw -> right hip yaw
+    12,  # left knee -> right knee
+    13,  # left ankle pitch -> right ankle pitch
+    14,  # left ankle roll -> right ankle roll
+    3,  # right hip pitch -> left hip pitch
+    4,  # right hip roll -> left hip roll
+    5,  # right hip yaw -> left hip yaw
+    6,  # right knee -> left knee
+    7,  # right ankle pitch -> left ankle pitch
+    8,  # right ankle roll -> left ankle roll
+    22,  # left shoulder pitch -> right shoulder pitch
+    23,  # left shoulder roll -> right shoulder roll
+    24,  # left shoulder yaw -> right shoulder yaw
+    25,  # left elbow -> right elbow
+    26,  # left wrist yaw -> right wrist yaw
+    27,  # left wrist pitch -> right wrist pitch
+    28,  # left wrist roll -> right wrist roll
+    15,  # right shoulder pitch -> left shoulder pitch
+    16,  # right shoulder roll -> left shoulder roll
+    17,  # right shoulder yaw -> left shoulder yaw
+    18,  # right elbow -> left elbow
+    19,  # right wrist yaw -> left wrist yaw
+    20,  # right wrist pitch -> left wrist pitch
+    21,  # right wrist roll -> left wrist roll
+]
+
+# A reflected rotation axis is an axial vector: roll/yaw reverse, pitch stays.
+# Negating waist coordinates during torso re-rooting does not change these signs.
+X2_29Dof_TorsoBase_symmetric_augmentation_joint_reverse_buf = [
+    -1,  # waist roll
+    1,  # waist pitch
+    -1,  # waist yaw
+    1,  # left hip pitch
+    -1,  # left hip roll
+    -1,  # left hip yaw
+    1,  # left knee
+    1,  # left ankle pitch
+    -1,  # left ankle roll
+    1,  # right hip pitch
+    -1,  # right hip roll
+    -1,  # right hip yaw
+    1,  # right knee
+    1,  # right ankle pitch
+    -1,  # right ankle roll
+    1,  # left shoulder pitch
+    -1,  # left shoulder roll
+    -1,  # left shoulder yaw
+    1,  # left elbow
+    -1,  # left wrist yaw
+    1,  # left wrist pitch
+    -1,  # left wrist roll
+    1,  # right shoulder pitch
+    -1,  # right shoulder roll
+    -1,  # right shoulder yaw
+    1,  # right elbow
+    -1,  # right wrist yaw
+    1,  # right wrist pitch
+    -1,  # right wrist roll
+]
+
 X2_JOINT_EFFORT_LIMITS: dict[str, float] = {
     "left_hip_pitch_joint": 120.0,
     "left_hip_roll_joint": 120.0,
@@ -217,6 +286,8 @@ def get_agibot_x2_robot_cfg() -> EntityCfg:
 __all__ = [
     "X2_ACTION_SCALE",
     "X2_AGIBOT_STIFF_GAINS",
+    "X2_29Dof_TorsoBase_symmetric_augmentation_joint_mapping",
+    "X2_29Dof_TorsoBase_symmetric_augmentation_joint_reverse_buf",
     "X2_FOOT_BODIES",
     "X2_HOME_KEYFRAME",
     "X2_JOINT_EFFORT_LIMITS",
