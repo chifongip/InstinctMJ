@@ -214,8 +214,9 @@ The camera renders 64×36 depth frames. Task preprocessing rotates the inverted
 raw image by 180 degrees, then applies G1's crop (top 18 pixels and 16 pixels
 from each side), blur and normalization. Policy and critic receive eight
 32×18 frames, with the same encoder input and network parameter shapes as G1.
-The 37-frame history samples every three camera frames at 30 Hz, matching
-G1's approximately 0.7-second observation span.
+The 37-frame history samples every five simulation camera frames at 50 Hz,
+matching G1's approximately 0.7-second observation span. The hardware capture
+mode is 480×270 at 60 Hz, downsampled to 64×36 before cropping.
 
 Contact sensors use X2's authored collisions. Foot volume bounds include the
 capsules' 0.015 m radius, and the foot-height reward uses a 0.0732 m sole offset.
@@ -256,10 +257,10 @@ joints at 50 Hz, use 2048 training environments and have 20-second episodes.
 | Constraint rows per environment | 700 | 2048 |
 | Foot sole offset | 0.058 m | 0.0732 m; volume points follow X2 capsules |
 | Camera parent / ray orientation | Torso / yaw only | Fixed head / full parent orientation |
-| Depth FOV (horizontal × vertical) | 89.51° × 58.29° | 90° × 65° |
+| Depth FOV (horizontal × vertical) | 89.51° × 58.29° | 90° × 60° |
 | Raw → policy depth image (width × height) | 64×36 → 32×18 after cropping | Same; rotate raw image 180° before cropping |
-| Camera refresh | Each policy sensing step (normally 50 Hz) | 30 Hz |
-| Eight depth frames | Five-sample spacing, about 0.70 s | Three-sample spacing, about 0.70 s |
+| Camera refresh in simulation | Each policy sensing step (50 Hz) | Same; hardware capture mode is 60 Hz |
+| Eight depth frames | Five-sample spacing, about 0.70 s | Same |
 | Minimum ray-hit rejection distance | 0.1 m | 0.1 m |
 | Reference wrist endpoints | Wrist-yaw links | Wrist-roll links (X2 terminal wrists) |
 | Motion selection | G1 motion YAML | Retargeted X2 clip YAML, torso root |
@@ -341,13 +342,44 @@ down and the camera points approximately 40 degrees downward. Match any hardware
 image rotation in deployment; the helper preserves the raw mounting orientation
 and the parkour task rotates the policy image into an upright convention.
 
-The [Gemini335 specifications](https://x2-aimdk.agibot.com/en/latest/about_agibot_X2/sensor_fov.html#rgbd)
-give a depth FOV of 90 x 65 degrees and resolution up to 1280x800. The factory
-sets both FOV axes explicitly, defaults to 80x50, and follows the head's full
-pose. Its 30 Hz update period matches the published
-[depth-image topic rate](https://x2-aimdk.agibot.com/en/latest/Interface/hal/sensor.html).
-The 2.5 m clipping limit is a task default. Noise, preprocessing and history are
-left to the task; measured calibration and driver rotation need hardware checks.
+The selected hardware depth mode is **480×270 at 60 Hz**, with a **90°×60°**
+FOV, following the paper's capture rate and resolution. Orbbec's
+[Gemini 330 datasheet, page 24](https://www.orbbec.com.cn/uploads/20250422/fa9480bb72bd788196829d1711a0e08d.pdf#page=24)
+lists the stream mode; [page 36](https://www.orbbec.com.cn/uploads/20250422/fa9480bb72bd788196829d1711a0e08d.pdf#page=36)
+lists its FOV. The 90°×65° specification belongs to the 16:10 modes.
+
+Like G1, simulation raycasts directly at 64×36 and senses once per 50 Hz
+policy step; it does not render all 60 hardware frames per second. The task
+keeps five-sample history spacing, an approximately 0.7-second history span,
+and G1's 32×18 cropped policy input. Camera mounting and the 2.5 m clipping
+limit are unchanged. Actual robot deployment must select the 480×270/60 Hz
+stream explicitly; these settings configure simulation, not the robot driver.
+
+To visualize both task cameras and their processing stages in the same static
+obstacle scene, run:
+
+```bash
+uv run python -m instinct_mj.scripts.visualize_parkour_depth
+```
+
+The figure, individual stages, raw arrays and camera metadata are saved under
+`videos/depth_comparison/`. The script checks that its final images exactly
+match the live sensor pipeline. Paper augmentations that are disabled in the
+tasks are identified in the caption.
+
+For FOV verification, add `--frustum` to draw the full camera frustum in cyan
+and the retained policy crop in orange. This also saves
+`g1_x2_camera_frustums.png`. The viewer-only wireframes extend 1 m along the
+optical axis and do not affect sensing or physics.
+
+On a machine with a desktop display, open an interactive static X2 scene with:
+
+```bash
+MUJOCO_GL=glfw uv run python -m instinct_mj.scripts.visualize_parkour_depth --frustum --viewer X2
+```
+
+Use `--viewer G1` for the same inspection on G1. Close the viewer to finish
+writing the comparison figure. Training and playback settings are unchanged.
 
 ### Motion references
 
