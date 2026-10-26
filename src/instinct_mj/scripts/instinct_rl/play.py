@@ -13,6 +13,7 @@ from typing import Literal
 import mjlab
 import torch
 import tyro
+import yaml
 from instinct_rl.runners import OnPolicyRunner
 from mjlab.scripts._cli import maybe_print_top_level_help
 from mjlab.utils.torch import configure_torch_backends
@@ -170,6 +171,7 @@ def _patch_world_free_camera(viewer: NativeMujocoViewer) -> None:
 
     viewer._setup_camera = _wrapped_setup_camera
 
+
 def _build_dummy_policy(agent_mode: str, action_shape: tuple[int, ...], device: str):
     if agent_mode == "zero":
 
@@ -182,6 +184,32 @@ def _build_dummy_policy(agent_mode: str, action_shape: tuple[int, ...], device: 
         return 2.0 * torch.rand(action_shape, device=device) - 1.0
 
     return random_policy
+
+
+def _configure_checkpoint_normalizers(agent_cfg: dict, checkpoint: Path) -> None:
+    """Restore normalizer definitions required by a pretrained checkpoint."""
+    state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    normalizers = agent_cfg.setdefault("normalizers", {})
+    missing = [
+        group
+        for group in ("policy", "critic")
+        if state.get(f"{group}_normalizer_state_dict") is not None and group not in normalizers
+    ]
+    if not missing:
+        return
+    saved_normalizers = {}
+    config_path = checkpoint.parent / "params" / "agent.yaml"
+    if config_path.is_file():
+        saved_normalizers = (yaml.safe_load(config_path.read_text()) or {}).get("normalizers") or {}
+    for group in missing:
+        definition = saved_normalizers.get(group)
+        if definition is None:
+            statistics = state[f"{group}_normalizer_state_dict"]
+            if set(statistics) != {"_mean", "_var", "_std", "count"}:
+                raise ValueError(f"Cannot infer {group} normalizer; supply its definition in {config_path}")
+            definition = {"class_name": "EmpiricalNormalization"}
+        normalizers[group] = definition
+        print(f"[INFO] Restoring checkpoint normalizer for {group}: {definition['class_name']}")
 
 
 def _resolve_checkpoint(
@@ -465,6 +493,8 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
         if checkpoint is not None or cfg.export_onnx:
             runner_cls = load_runner_cls(task_id) or OnPolicyRunner
             agent_cfg_dict = agent_cfg.to_dict()
+            if checkpoint is not None:
+                _configure_checkpoint_normalizers(agent_cfg_dict, checkpoint)
             runner = runner_cls(
                 vec_env,
                 agent_cfg_dict,
