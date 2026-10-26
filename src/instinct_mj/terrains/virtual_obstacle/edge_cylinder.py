@@ -553,7 +553,16 @@ class GreedyconcatEdgeCylinder(EdgeCylinder):
         max_passes = max(int(self.cfg.merge_collinear_max_passes), 1)
         active_segments = [seg.astype(np.float64, copy=False) for seg in segments]
         for _ in range(max_passes):
-            used = [False] * len(active_segments)
+            used = np.zeros(len(active_segments), dtype=bool)
+            candidates = np.asarray(active_segments, dtype=np.float32)
+            bounds_min = np.minimum(candidates[:, :3], candidates[:, 3:])
+            bounds_max = np.maximum(candidates[:, :3], candidates[:, 3:])
+            # A mergeable pair overlaps along its projected direction (up to
+            # gap_threshold), with endpoints at most line_distance_threshold
+            # away from the other line. Expand conservatively to retain every
+            # pair accepted by the exact test, including float32 roundoff.
+            padding = gap_threshold + 2.0 * max(line_distance_threshold, 0.0)
+            padding += 16.0 * np.finfo(np.float32).eps * max(1.0, float(np.max(np.abs(candidates))))
             merged_segments: list[np.ndarray] = []
             changed = False
             for i, base_seg in enumerate(active_segments):
@@ -565,22 +574,35 @@ class GreedyconcatEdgeCylinder(EdgeCylinder):
                 keep_merging = True
                 while keep_merging:
                     keep_merging = False
-                    for j, candidate in enumerate(active_segments):
-                        if used[j]:
-                            continue
-                        merged = self._try_merge_collinear_pair(
-                            current_seg,
-                            candidate.astype(np.float32, copy=False),
-                            cos_threshold=cos_threshold,
-                            gap_threshold=gap_threshold,
-                            line_distance_threshold=line_distance_threshold,
+                    cursor = 0
+                    while cursor < len(candidates):
+                        current_min = np.minimum(current_seg[:3], current_seg[3:]) - padding
+                        current_max = np.maximum(current_seg[:3], current_seg[3:]) + padding
+                        nearby = (
+                            ~used[cursor:]
+                            & np.all(bounds_max[cursor:] >= current_min, axis=1)
+                            & np.all(bounds_min[cursor:] <= current_max, axis=1)
                         )
-                        if merged is None:
-                            continue
-                        current_seg = merged
-                        used[j] = True
-                        changed = True
-                        keep_merging = True
+                        for j in np.flatnonzero(nearby) + cursor:
+                            merged = self._try_merge_collinear_pair(
+                                current_seg,
+                                candidates[j],
+                                cos_threshold=cos_threshold,
+                                gap_threshold=gap_threshold,
+                                line_distance_threshold=line_distance_threshold,
+                            )
+                            if merged is None:
+                                continue
+                            current_seg = merged
+                            used[j] = True
+                            changed = True
+                            keep_merging = True
+                            # Refresh bounds after a merge, then continue in the
+                            # original scan order. The next sweep starts at zero.
+                            cursor = int(j) + 1
+                            break
+                        else:
+                            break
                 merged_segments.append(current_seg.astype(np.float64, copy=False))
 
             active_segments = merged_segments
