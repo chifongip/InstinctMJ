@@ -26,9 +26,9 @@ dependencies = [
   "pandas",
   "coacd",
   "shapely>=2.0",
-  "warp-lang>=1.14.0",
-  "mujoco-warp~=3.11.0",
-  "mujoco~=3.11.0",
+  "warp-lang>=1.15.0",
+  "mujoco-warp~=3.16.0",
+  "mujoco~=3.16.0",
   "mjlab==1.6.0",
   "instinct_rl",
 ]
@@ -64,7 +64,7 @@ explicit = true
 
 [tool.uv.sources]
 instinct_rl = { git = "https://github.com/project-instinct/instinct_rl.git" }
-mjlab = { path = "../mjlab", editable = true }
+mjlab = { git = "https://github.com/mujocolab/mjlab.git", rev = "8bb2bc9e187797689ec82c78c35019afd2fd0376" }
 warp-lang = { index = "nvidia", marker = "sys_platform != 'darwin'" }
 
 [tool.setuptools]

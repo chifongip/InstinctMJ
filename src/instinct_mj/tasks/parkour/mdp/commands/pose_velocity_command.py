@@ -83,13 +83,15 @@ class PoseVelocityCommand(CommandTerm):
             proportions = np.array([sub_cfg.proportion for sub_cfg in terrain_generator_cfg.sub_terrains.values()])
             proportions /= np.sum(proportions)
 
-            # find the sub-terrain index for each column
-            # we generate the terrains based on their proportion (not randomly sampled)
-            sub_indices = []
-            for index in range(terrain_generator_cfg.num_cols):
-                sub_index = np.min(np.where(index / terrain_generator_cfg.num_cols + 0.001 < np.cumsum(proportions))[0])
-                sub_indices.append(sub_index)
-            sub_indices = np.array(sub_indices, dtype=np.int32)
+            # mjlab curriculum generation uses one column per terrain type;
+            # proportions control spawning, not the number of columns.
+            if terrain_generator_cfg.curriculum:
+                sub_indices = np.arange(len(proportions), dtype=np.int32)
+            else:
+                sub_indices = np.searchsorted(
+                    np.cumsum(proportions),
+                    np.arange(terrain_generator_cfg.num_cols) / terrain_generator_cfg.num_cols + 0.001,
+                )
             sub_terrains_names = list(terrain_generator_cfg.sub_terrains.keys())
             for key, value in self.cfg.velocity_ranges.items():
                 if key in sub_terrains_names:
@@ -388,9 +390,9 @@ class PoseVelocityCommand(CommandTerm):
             )
             cos_yaw = np.cos(yaw)
             sin_yaw = np.sin(yaw)
-            vel_cmd_w = np.array(
-                [cos_yaw * vel_cmd_b[0] - sin_yaw * vel_cmd_b[1], sin_yaw * vel_cmd_b[0] + cos_yaw * vel_cmd_b[1], 0.0]
-            )
+            vel_cmd_w = np.array([
+                cos_yaw * vel_cmd_b[0] - sin_yaw * vel_cmd_b[1], sin_yaw * vel_cmd_b[0] + cos_yaw * vel_cmd_b[1], 0.0
+            ])
 
             arrow_end = arrow_start + vel_cmd_w * arrow_scale
             visualizer.add_arrow(
@@ -403,9 +405,9 @@ class PoseVelocityCommand(CommandTerm):
 
             # 3. Draw actual velocity arrow (blue)
             lin_vel_b = lin_vel_bs[batch]
-            vel_actual_w = np.array(
-                [cos_yaw * lin_vel_b[0] - sin_yaw * lin_vel_b[1], sin_yaw * lin_vel_b[0] + cos_yaw * lin_vel_b[1], 0.0]
-            )
+            vel_actual_w = np.array([
+                cos_yaw * lin_vel_b[0] - sin_yaw * lin_vel_b[1], sin_yaw * lin_vel_b[0] + cos_yaw * lin_vel_b[1], 0.0
+            ])
 
             arrow_end_actual = arrow_start + vel_actual_w * arrow_scale
             visualizer.add_arrow(

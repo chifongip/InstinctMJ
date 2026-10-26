@@ -11,6 +11,7 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import torch
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers import (
     CurriculumTermCfg,
@@ -59,7 +60,7 @@ from instinct_mj.tasks.parkour.config.parkour_env_cfg import (
 from instinct_mj.tasks.parkour.mdp.commands import PoseVelocityCommandCfg
 from instinct_mj.terrains.terrain_importer_cfg import TerrainImporterCfg as InstinctTerrainImporterCfg
 from instinct_mj.terrains.virtual_obstacle.edge_cylinder_cfg import GreedyconcatEdgeCylinderCfg
-from instinct_mj.utils.noise import DepthNormalizationCfg, GaussianBlurNoiseCfg
+from instinct_mj.utils.noise import CropAndResizeCfg, DepthNormalizationCfg, GaussianBlurNoiseCfg, ImageNoiseCfg
 
 # Repository-local default; callers can supply a different dataset directory.
 _PARKOUR_DATASET_DIR = Path(__file__).resolve().parents[6] / "checkpoint/parkour/x2_parkour_motion_reference"
@@ -86,7 +87,7 @@ X2_PARKOUR_SYMMETRIC_LINK_MAPPING = [0, 1, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 1
 
 # rgbd_head_front fixed joint in X2_URDF-v1.3.0/x2_ultra.urdf.
 # RPY=(2.2689, 0, 1.5708), ROS optical axes: +Z forward, +X right, +Y down.
-# Preserve the raw upside-down mounting; do not apply an extra image flip.
+# Preserve the raw upside-down mount; the task normalizes image orientation.
 X2_DEPTH_CAMERA_BODY = "head_pitch_link"
 X2_DEPTH_CAMERA_POS = (0.05761, -0.011183, -0.04837)
 X2_DEPTH_CAMERA_QUAT_ROS = (0.29884467067118387, 0.6408510171708242, 0.6408533711523742, 0.2988457683909694)
@@ -135,6 +136,11 @@ def get_agibot_x2_depth_camera_cfg(
     )
 
 
+def _upright_depth_image(data: torch.Tensor, _cfg: ImageNoiseCfg, _env_ids) -> torch.Tensor:
+    """Rotate the inverted X2 image into G1's upright policy-image convention."""
+    return data.flip((1, 2))
+
+
 # ---------------------------------------------------------------------------
 # Motion reference configs
 # ---------------------------------------------------------------------------
@@ -181,7 +187,7 @@ class X2ParkourAmpEnvCfg(InstinctRlEnvCfg):
     """Dictionary-manager environment configuration for X2 Parkour AMP."""
 
     scene: X2ParkourSceneCfg = field(default_factory=X2ParkourSceneCfg)
-    decimation: int = 20
+    decimation: int = 4
     observations: dict = field(default_factory=dict)
     actions: dict = field(default_factory=dict)
     rewards: dict = field(default_factory=lambda: MultiRewardCfg({"rewards": {}}))
@@ -215,7 +221,7 @@ def instinct_x2_parkour_amp_env_cfg(
             num_envs=tracking_scene.num_envs,
             env_spacing=tracking_scene.env_spacing,
             terrain=tracking_scene.terrain,
-            entities={"robot": get_agibot_x2_robot_cfg()},
+            entities={"robot": get_agibot_x2_robot_cfg(delayed=True)},
             sensors=tracking_scene.sensors,
             extent=tracking_scene.extent,
             spec_fn=tracking_scene.spec_fn,
@@ -253,9 +259,9 @@ def instinct_x2_parkour_amp_env_cfg(
     cfg.sim.mujoco.iterations = 10
     cfg.sim.mujoco.ls_iterations = 20
     cfg.sim.mujoco.ccd_iterations = 128
-    # Retain the XML's 1 ms physics step for X2's stiff PD gains; policy/AMP stay at 50 Hz.
-    cfg.sim.mujoco.timestep = 0.001
-    cfg.decimation = 20
+    # Match G1's physics and policy rates; X2 keeps its own gains and inertias.
+    cfg.sim.mujoco.timestep = 0.005
+    cfg.decimation = 4
     joint_pos_action: JointPositionActionCfg = cfg.actions["joint_pos"]
     joint_pos_action.scale = copy.deepcopy(X2_ACTION_SCALE)
     # Terrain
@@ -352,15 +358,20 @@ def instinct_x2_parkour_amp_env_cfg(
             max_distance=10.0,
             debug_vis=False,
         ),
-        get_agibot_x2_depth_camera_cfg(),
+        get_agibot_x2_depth_camera_cfg(width=64, height=36),
     )
-    # Keep the raw mounting and full FOV; G1's crop is specific to its camera.
+    # Preserve the physical mount/FOV, then use G1's upright image convention,
+    # crop, blur and normalization. Raw sensor output remains upside down.
     camera = next(sensor for sensor in cfg.scene.sensors if sensor.name == "camera")
     camera.noise_pipeline = {
+        "upright_image": ImageNoiseCfg(func=_upright_depth_image),
+        "crop_and_resize": CropAndResizeCfg(crop_region=(18, 0, 16, 16)),
         "gaussian_blur": GaussianBlurNoiseCfg(kernel_size=3, sigma=1),
         "depth_normalization": DepthNormalizationCfg(depth_range=(0.0, 2.5), normalize=True, output_range=(0.0, 1.0)),
     }
-    # Eight frames, spaced by five camera samples, plus one sample of delay.
+    camera.min_distance = 0.1
+    # Retain G1's history capacity. Sampling every three 30 Hz camera frames
+    # matches its five-frame spacing at 50 Hz: eight images span 0.7 seconds.
     camera.data_histories = {"distance_to_image_plane_noised": 37}
 
     motion_reference_sensor_cfg = copy.deepcopy(motion_reference_cfg)
@@ -471,7 +482,7 @@ def instinct_x2_parkour_amp_env_cfg(
             params={
                 "data_type": "distance_to_image_plane_noised_history",
                 "sensor_cfg": SceneEntityCfg("camera"),
-                "history_skip_frames": 5,
+                "history_skip_frames": 3,
                 "num_output_frames": 8,
                 "delayed_frame_ranges": (0, 1),
                 "debug_vis": False,
@@ -536,7 +547,7 @@ def instinct_x2_parkour_amp_env_cfg(
             params={
                 "data_type": "distance_to_image_plane_noised_history",
                 "sensor_cfg": SceneEntityCfg("camera"),
-                "history_skip_frames": 5,
+                "history_skip_frames": 3,
                 "num_output_frames": 8,
                 "delayed_frame_ranges": (0, 1),
                 "debug_vis": False,
@@ -797,7 +808,7 @@ def instinct_x2_parkour_amp_env_cfg(
                 params={
                     "asset_cfg": SceneEntityCfg(
                         "robot",
-                        joint_names=(".*_shoulder_.*", ".*_elbow_joint", ".*_wrist.*", "waist_.*"),
+                        joint_names=(".*_shoulder_.*", ".*_elbow_.*", ".*_wrist.*", "waist_.*"),
                     )
                 },
             ),

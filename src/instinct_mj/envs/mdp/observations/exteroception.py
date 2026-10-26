@@ -198,7 +198,9 @@ class delayed_visualizable_image(ManagerTermBase):
         Get the delayed frames from the sensor data.
         """
         # obtain the input image
-        images = self.sensor.data.output[self.data_type].clone()  # (N, history, H, W, C)
+        # Advanced indexing below copies only the selected frames. Reading the
+        # history directly avoids cloning every frame for both actor and critic.
+        images = self.sensor.data.output[self.data_type]  # (N, history, H, W, C)
         # NOTE: Only depth-related data types with history are supported for now. where C = 1.
         images = images.squeeze(
             -1

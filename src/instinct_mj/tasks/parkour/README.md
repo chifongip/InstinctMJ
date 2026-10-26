@@ -202,16 +202,20 @@ cfg = instinct_x2_parkour_amp_final_cfg(play=False)
 
 The factory uses X2's fixed-head torso-root model, nominal pose and `agibot_stiff`
 gains. All 29 movable joints are policy-controlled, matching G1 parkour's
-full-body action layout. Physics runs at 1 kHz (the source XML timestep), with
-20 substeps per 50 Hz policy/AMP step and no actuator delay.
+full-body action layout. Physics matches G1: a 5 ms timestep, four substeps per
+50 Hz policy/AMP step and per-episode command delays of 0–2 physics steps
+(0–10 ms), grouped into the same five actuator buses.
 
 Motion loading defaults to `checkpoint/parkour/x2_parkour_motion_reference/`
 relative to this checkout, selecting only the 50 discontinuity-free clips.
 Joint and link symmetry buffers are connected to the motion-reference manager.
 The policy, critic, AMP policy and AMP reference groups follow G1's layout.
-Depth observations contain eight normalized 80x50 frames; the task adds blur
-and 37 samples of history to the raw camera helper, preserving its full FOV
-and upside-down mounting.
+The camera renders 64×36 depth frames. Task preprocessing rotates the inverted
+raw image by 180 degrees, then applies G1's crop (top 18 pixels and 16 pixels
+from each side), blur and normalization. Policy and critic receive eight
+32×18 frames, with the same encoder input and network parameter shapes as G1.
+The 37-frame history samples every three camera frames at 30 Hz, matching
+G1's approximately 0.7-second observation span.
 
 Contact sensors use X2's authored collisions. Foot volume bounds include the
 capsules' 0.015 m radius, and the foot-height reward uses a 0.0732 m sole offset.
@@ -235,15 +239,87 @@ The X2 constraint buffer uses 2048 rows: the initial stair-scene check exceeded
 G1's 700-row budget before policy construction. Long training, reward tuning
 and evaluation across the full terrain curriculum remain necessary.
 
-CPU validation covered both factory modes, compiled PD gains/torque limits, all
-50 motion clips, matching AMP dimensions, normalized depth observations, and
-automatic/partial resets on small rough-ground and stair/gap scenes. This does
-not establish training convergence or performance at the default 2048 environments.
+### Comparison with G1
 
-A four-environment CUDA smoke run completed three 24-step AMP/PPO iterations
-and saved a checkpoint. Reloading it into a fresh registered X2 play environment
-passed 40 inference steps. All 123 recorded scalar series were finite. This
-verifies the training/checkpoint path, not learned parkour ability.
+The train/play factories have the same observation groups, observation history lengths,
+reward weights, commands, events, terminations and curriculum thresholds. PPO,
+AMP, depth-encoder and four-expert MoE hyperparameters match exactly; only the
+RL experiment name changes from `g1_parkour` to `x2_parkour`. Both control 29
+joints at 50 Hz, use 2048 training environments and have 20-second episodes.
+
+| Setting | G1 parkour (default shoe model) | X2 parkour |
+| --- | --- | --- |
+| Physics timestep / decimation | 5 ms / 4 | 5 ms / 4 |
+| Actuation | G1 gains; 0–2 physics-step lag | `agibot_stiff`; same delay scheme |
+| Nominal torso height | 0.9 m | 0.8350706 m, preserving 0.68 m pelvis height |
+| Joint limits / action scales | G1-specific | X2 XML/URDF limits; scale = 0.25 × effort / stiffness |
+| Constraint rows per environment | 700 | 2048 |
+| Foot sole offset | 0.058 m | 0.0732 m; volume points follow X2 capsules |
+| Camera parent / ray orientation | Torso / yaw only | Fixed head / full parent orientation |
+| Depth FOV (horizontal × vertical) | 89.51° × 58.29° | 90° × 65° |
+| Raw → policy depth image (width × height) | 64×36 → 32×18 after cropping | Same; rotate raw image 180° before cropping |
+| Camera refresh | Each policy sensing step (normally 50 Hz) | 30 Hz |
+| Eight depth frames | Five-sample spacing, about 0.70 s | Three-sample spacing, about 0.70 s |
+| Minimum ray-hit rejection distance | 0.1 m | 0.1 m |
+| Reference wrist endpoints | Wrist-yaw links | Wrist-roll links (X2 terminal wrists) |
+| Motion selection | G1 motion YAML | Retargeted X2 clip YAML, torso root |
+
+Remaining differences follow X2's geometry, joint conventions, requested gains
+and camera specifications. The camera's raw mounting stays unchanged; only
+policy preprocessing rotates the image. The 0.1 m ray-hit filter matches G1
+and is not a calibrated stereo-camera minimum-depth model.
+
+The policy architecture now matches G1, including inferred layer dimensions.
+G1 weights still require robot-specific adaptation because the joint meanings,
+order and action scales differ. Earlier X2 smoke-test checkpoints using 80×50
+policy images have incompatible encoder dimensions and must be retrained.
+
+### Full-training readiness
+
+Production uses 2048 environments, 5 ms physics, a 50 Hz policy, eight 32×18
+depth frames, 24 rollout steps and four PPO minibatches. The curriculum has
+100 tiles: ten difficulty rows and one column per terrain type. mjlab ignores
+`num_cols=20` in curriculum mode; spawn proportions and metadata follow the
+actual columns.
+
+On the server, install the pinned mjlab revision using `uv.lock`, and copy
+`checkpoint/parkour/x2_parkour_motion_reference/`, including the clip YAML and
+`clips/`. Motion data is Git-ignored. The updated mjlab requires
+MuJoCo/MuJoCo-Warp 3.16 and Warp 1.15 or newer.
+
+```bash
+uv sync --locked
+uv run instinct-list-envs --keyword X2
+uv run python -m instinct_mj.scripts.validate_parkour --audit-only
+uv run python -m instinct_mj.scripts.validate_parkour --device cuda:0
+uv run instinct-train Instinct-Parkour-Target-Amp-X2-v0 --device cuda:0
+```
+
+The preflight audits motion files, checks all terrain tiles and physics
+substeps, verifies curriculum and partial resets, runs two training iterations,
+restores model/optimizer state, resumes one iteration and tests inference.
+Checkpoints, parameter snapshots, dependency versions and `readiness.json` go
+into a new directory under `logs/instinct_rl/x2_parkour/`. Solver iteration-limit
+flags are reported separately from collision/capacity overflows.
+Use `--num-envs 32` for local validation; registered task defaults stay unchanged.
+Run the production-batch preflight on the server before full training.
+
+Local checks passed with 32 environments on mjlab revision `8bb2bc9e1`,
+MuJoCo/MuJoCo-Warp 3.16 and Warp 1.18, including all 100 tiles, checkpoint
+resume and finite training metrics. Shared motion parsing also matches both
+robots' MuJoCo body frames, including off-origin joint pivots. Full training
+and learned parkour performance remain unverified.
+
+The motion audit found 68 of 18,932 transitions (0.36%) above URDF velocity
+limits, with a maximum ratio of 1.81. These remain AMP style references rather
+than direct joint-position tracking commands.
+
+To resume a saved run with its optimizer state:
+
+```bash
+uv run instinct-train Instinct-Parkour-Target-Amp-X2-v0 --device cuda:0 \
+  --agent.resume --agent.load-run /absolute/path/to/run
+```
 
 ### Depth camera
 
@@ -262,7 +338,8 @@ The `rgbd_head_front` URDF mount is relative to `head_pitch_link`: position
 `(0.05761, -0.011183, -0.04837)` m and RPY `(2.2689, 0, 1.5708)` rad.
 Using ROS optical axes (+Z forward, +X right, +Y down), the raw image is upside
 down and the camera points approximately 40 degrees downward. Match any hardware
-image rotation in training; the factory preserves the raw mounting orientation.
+image rotation in deployment; the helper preserves the raw mounting orientation
+and the parkour task rotates the policy image into an upright convention.
 
 The [Gemini335 specifications](https://x2-aimdk.agibot.com/en/latest/about_agibot_X2/sensor_fov.html#rgbd)
 give a depth FOV of 90 x 65 degrees and resolution up to 1280x800. The factory
@@ -284,7 +361,9 @@ conda run --no-capture-output -n robot_retargeter python \
 Defaults are `~/robot_retargeter` for the tool, `checkpoint/parkour/parkour_motion_reference/`
 for the source, and `checkpoint/parkour/x2_parkour_motion_reference/` for output.
 Use `--retargeter`, `--input-dir`, `--output-dir`, `--max-frames` and `--overwrite`
-to override them. Intermediate CSVs, keypoints and IK models are temporary.
+to override them. Exported clip paths retain source subdirectories so motions
+with equal basenames remain distinct. Intermediate CSVs, keypoints and IK models
+are temporary.
 The original dataset is preserved.
 
 The adapter maps source joints by name, extracts/scales targets using the tool,

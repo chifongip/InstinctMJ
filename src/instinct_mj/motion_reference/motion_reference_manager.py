@@ -8,10 +8,17 @@ from copy import copy
 from typing import TYPE_CHECKING
 
 import mjlab.utils.lab_api.string as string_utils
+import numpy as np
+import pytorch_kinematics as pk
+import torch
+import torch.distributed as dist
 from mjlab.scene import Scene
 from mjlab.sensor import Sensor
 from mjlab.utils.lab_api import math as math_utils
 from prettytable import PrettyTable
+from pytorch_kinematics import mjcf as pk_mjcf
+from pytorch_kinematics.frame import Frame, Link
+from pytorch_kinematics.transforms import Transform3d
 
 from instinct_mj.utils.timestamped_buffer import TimestampedBuffer
 
@@ -19,13 +26,41 @@ from .motion_reference_data import MotionReferenceData, MotionReferenceState
 
 if TYPE_CHECKING:
     from mjlab.viewer.debug_visualizer import DebugVisualizer
-    from .motion_reference_cfg import MotionReferenceManagerCfg
-    from .motion_buffer import MotionBuffer
 
-import numpy as np
-import pytorch_kinematics as pk
-import torch
-import torch.distributed as dist
+    from .motion_buffer import MotionBuffer
+    from .motion_reference_cfg import MotionReferenceManagerCfg
+
+
+def _build_mjcf_chain(model_content: str) -> pk.Chain:
+    """Build PK kinematics with MuJoCo integer enums and off-origin pivots."""
+    # MuJoCo 3.16 enum keys no longer compare equally with NumPy integer
+    # lookup scalars. Integer keys work with PK's model array indices.
+    pk_mjcf.JOINT_TYPE_MAP = {int(key): value for key, value in pk_mjcf.JOINT_TYPE_MAP.items()}
+    chain = pk.build_chain_from_mjcf(model_content)
+    root = chain.find_frame("world")
+
+    def restore_body_frames(frame: Frame) -> None:
+        for child in frame.children:
+            restore_body_frames(child)
+        if frame.joint.joint_type == "fixed" or frame.joint.offset is None:
+            return
+        pivot = frame.joint.offset.get_matrix()[0, :3, 3]
+        if not torch.any(pivot != 0):
+            return
+        # PK returns the joint-pivot frame for nonzero joint.pos. MuJoCo
+        # returns the body frame: T_body @ T(pivot) @ R(q) @ T(-pivot).
+        body = Frame(
+            name=frame.name,
+            link=Link(frame.link.name, offset=Transform3d(pos=-pivot), visuals=frame.link.visuals),
+        )
+        body.children = frame.children
+        frame.name += "__joint_pivot"
+        frame.link.name = frame.name
+        frame.link.visuals = []
+        frame.children = [body]
+
+    restore_body_frames(root)
+    return pk.Chain(root)
 
 
 class MotionReferenceManager(Sensor):
@@ -794,11 +829,13 @@ class MotionReferenceManager(Sensor):
             # pytorch_kinematics loads XML from string, so we must change the working directory
             # to the MJCF file's parent so that MuJoCo can resolve relative mesh paths.
             prev_cwd = os.getcwd()
-            os.chdir(os.path.dirname(os.path.abspath(self.cfg.robot_model_path)))
-            self._robot_kinematics_chain = pk.build_chain_from_mjcf(model_content).to(
-                dtype=torch.float, device=self.device
-            )
-            os.chdir(prev_cwd)
+            try:
+                os.chdir(os.path.dirname(os.path.abspath(self.cfg.robot_model_path)))
+                self._robot_kinematics_chain = _build_mjcf_chain(model_content).to(
+                    dtype=torch.float, device=self.device
+                )
+            finally:
+                os.chdir(prev_cwd)
         else:
             self._robot_kinematics_chain = pk.build_chain_from_urdf(model_content).to(
                 dtype=torch.float, device=self.device
@@ -1084,13 +1121,19 @@ class MotionReferenceManager(Sensor):
         data_buf.link_quat_b[env_ids] = self._symmetric_augment_link_quat_buffer(
             data_buf.link_quat_b[env_ids],
         )
-        data_buf.link_lin_vel_b[env_ids, :, 1] *= -1
-        data_buf.link_ang_vel_b[env_ids] = self._symmetric_augment_ang_vel_buffer(
-            data_buf.link_ang_vel_b[env_ids],
+        # Link velocities must follow the same left/right permutation as poses.
+        # Linear velocity is a polar vector; angular velocity is an axial vector.
+        data_buf.link_lin_vel_b[env_ids] = self._symmetric_augment_link_pos_buffer(
+            data_buf.link_lin_vel_b[env_ids],
         )
-        data_buf.link_lin_vel_w[env_ids, :, 1] *= -1
+        data_buf.link_ang_vel_b[env_ids] = self._symmetric_augment_ang_vel_buffer(
+            data_buf.link_ang_vel_b[env_ids][..., self.cfg.symmetric_augmentation_link_mapping, :],
+        )
+        data_buf.link_lin_vel_w[env_ids] = self._symmetric_augment_link_pos_buffer(
+            data_buf.link_lin_vel_w[env_ids],
+        )
         data_buf.link_ang_vel_w[env_ids] = self._symmetric_augment_ang_vel_buffer(
-            data_buf.link_ang_vel_w[env_ids],
+            data_buf.link_ang_vel_w[env_ids][..., self.cfg.symmetric_augmentation_link_mapping, :],
         )
 
     """

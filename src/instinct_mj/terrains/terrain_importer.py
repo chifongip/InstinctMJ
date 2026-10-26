@@ -540,12 +540,18 @@ class TerrainImporter(TerrainImporterBase):
             return
 
         subterrain_cfgs = self.subterrain_specific_cfgs or []
+        hfield_cfgs = getattr(self.terrain_generator, "hfield_subterrain_cfgs", None)
         hfield_geom_index = 0
         for geom in terrain_body.geoms:
             hfield_name = geom.hfieldname
             if not isinstance(hfield_name, str) or hfield_name == "":
                 continue
-            subterrain_cfg = subterrain_cfgs[hfield_geom_index] if hfield_geom_index < len(subterrain_cfgs) else None
+            if hfield_cfgs is not None:
+                subterrain_cfg = hfield_cfgs.get(hfield_name)
+            else:
+                subterrain_cfg = (
+                    subterrain_cfgs[hfield_geom_index] if hfield_geom_index < len(subterrain_cfgs) else None
+                )
             hfield_geom_index += 1
             yield geom, subterrain_cfg
 
@@ -762,13 +768,25 @@ class TerrainImporter(TerrainImporterBase):
         for virtual_obstacle in self._virtual_obstacles.values():
             virtual_obstacle.debug_vis(visualizer)
 
-    def configure_env_origins(self, origins: np.ndarray | torch.Tensor | None = None):
+    def configure_env_origins(
+        self,
+        origins: np.ndarray | torch.Tensor | None = None,
+        proportions: np.ndarray | None = None,
+    ):
         """Configure the environment origins.
 
         Args:
             origins: The origins of the environments. Shape is (num_envs, 3).
+            proportions: Optional column weights. Curriculum defaults to the
+                configured terrain-type proportions.
         """
         if origins is None and getattr(self, "_hacked_terrain_type", None) == "hacked_generator":
             # In case of None override, we don't need to do anything
             return
-        return super().configure_env_origins(origins)
+        generator_cfg = self.cfg.terrain_generator
+        if origins is not None and proportions is None and generator_cfg is not None and generator_cfg.curriculum:
+            # Match mjlab's one-column-per-type curriculum and retain the
+            # configured spawn proportions instead of distributing uniformly.
+            proportions = np.array([terrain.proportion for terrain in generator_cfg.sub_terrains.values()])
+            proportions = proportions / proportions.sum()
+        return super().configure_env_origins(origins, proportions)

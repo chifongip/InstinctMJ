@@ -253,7 +253,7 @@ def get_agibot_x2_spec() -> mujoco.MjSpec:
     return spec
 
 
-def get_agibot_x2_robot_cfg() -> EntityCfg:
+def get_agibot_x2_robot_cfg(*, delayed: bool = False) -> EntityCfg:
     """Return a fresh torso-base, 29-joint X2 config with agibot_stiff gains.
 
     Head yaw and pitch are mechanically fixed at zero in the derived MJCF.
@@ -262,7 +262,9 @@ def get_agibot_x2_robot_cfg() -> EntityCfg:
     armature, friction and effort limits are preserved. Gains and the nominal
     physical pose come from unitree_rl_mjlab.
     Action scales use the local XML effort limits, which differ from that repo.
-    No actuator delay is assumed.
+    With ``delayed=True``, apply G1 parkour's per-episode 0--2 physics-step
+    command-delay randomization, independently for legs, feet, waist, waist yaw
+    and arms. Gains, feedback and physical joint parameters are unchanged.
     """
     return EntityCfg(
         spec_fn=get_agibot_x2_spec,
@@ -275,12 +277,31 @@ def get_agibot_x2_robot_cfg() -> EntityCfg:
                     stiffness=_joint_gains(name)[0],
                     damping=_joint_gains(name)[1],
                     effort_limit=X2_JOINT_EFFORT_LIMITS[name],
+                    delay_min_lag=0,
+                    delay_max_lag=2 if delayed else 0,
+                    delay_update_period=_delay_update_period(name) if delayed else 0,
+                    delay_per_env_phase=not delayed,
                 )
                 for name in X2_JOINT_NAMES
             ),
             soft_joint_pos_limit_factor=0.9,
         ),
     )
+
+
+def _delay_update_period(name: str) -> int:
+    """Match G1's five reset-only command buses without copying its gains."""
+    if name == "waist_yaw_joint":
+        group = 3
+    elif name.startswith("waist_"):
+        group = 2
+    elif "_ankle_" in name:
+        group = 1
+    elif "_hip_" in name or "_knee_" in name:
+        group = 0
+    else:
+        group = 4
+    return 1_000_000 + group
 
 
 __all__ = [

@@ -152,9 +152,9 @@ class FiledTerrainGenerator(TerrainGenerator):
 
     def __init__(self, cfg: FiledTerrainGeneratorCfg, device: str = "cpu"):
 
-        # Access the i-th row, j-th column subterrain config by
-        # self._subterrain_specific_cfgs[i*num_cols + j]
-        self._subterrain_specific_cfgs: list[SubTerrainBaseCfg] = []
+        # Generation order can be column-major (curriculum) or row-major.
+        self._subterrain_specific_cfgs: dict[tuple[int, int], SubTerrainBaseCfg] = {}
+        self._hfield_subterrain_cfgs: dict[str, SubTerrainBaseCfg] = {}
         self._terrain_meshes: list[trimesh.Trimesh] = []
         self.terrain_mesh: trimesh.Trimesh | None = None
         # Keep original patch radii (including list-style radii) for
@@ -274,7 +274,7 @@ class FiledTerrainGenerator(TerrainGenerator):
             collision_hfield_stitch_border_pixels=stitch_border_pixels,
             collision_hfield_stitch_height=float(stitch_height),
         )
-        terrain_linear_idx = sub_row * self.cfg.num_cols + sub_col
+        terrain_linear_idx = sub_row * self.terrain_origins.shape[1] + sub_col
         hfield_geometry = _add_collision_hfield_from_mesh(
             collision_cfg,
             spec,
@@ -546,25 +546,34 @@ class FiledTerrainGenerator(TerrainGenerator):
         cfg.difficulty = float(difficulty)
         cfg.seed = self.cfg.seed
         # <<< NOTE
-        self._subterrain_specific_cfgs.append(cfg)  # since in super function, cfg is a copy of the original config.
+        self._subterrain_specific_cfgs[sub_row, sub_col] = cfg
+        for name in {hfield.name for hfield in spec.hfields} - hfield_names_before:
+            self._hfield_subterrain_cfgs[name] = cfg
 
         return spawn_origin
 
     @property
+    def hfield_subterrain_cfgs(self) -> dict[str, SubTerrainBaseCfg]:
+        """Map heightfields to their generating tile, independent of generation order."""
+        return self._hfield_subterrain_cfgs.copy()
+
+    @property
     def subterrain_specific_cfgs(self) -> list[SubTerrainBaseCfg]:
-        """Get the specific configurations for all subterrains."""
-        return self._subterrain_specific_cfgs.copy()  # Return a copy to avoid external modification.
+        """Return per-tile configurations in row-major order."""
+        return [
+            self._subterrain_specific_cfgs[row, col]
+            for row in range(self.terrain_origins.shape[0])
+            for col in range(self.terrain_origins.shape[1])
+        ]
 
     def get_subterrain_cfg(
         self, row_ids: int | torch.Tensor, col_ids: int | torch.Tensor
-    ) -> list[SubTerrainBaseCfg] | SubTerrainBaseCfg | None:
+    ) -> list[SubTerrainBaseCfg | None] | SubTerrainBaseCfg | None:
         """Get the specific configuration for a subterrain by its row and column index."""
-        num_cols = self.cfg.num_cols
-        idx = row_ids * num_cols + col_ids
-        if isinstance(idx, torch.Tensor):
-            idx = idx.cpu().numpy().tolist()  # Convert to list if it's a tensor.
-            return [
-                self._subterrain_specific_cfgs[i] if 0 <= i < len(self._subterrain_specific_cfgs) else None for i in idx
-            ]
-        if isinstance(idx, int):
-            return self._subterrain_specific_cfgs[idx] if 0 <= idx < len(self._subterrain_specific_cfgs) else None
+        if isinstance(row_ids, int) and isinstance(col_ids, int):
+            return self._subterrain_specific_cfgs.get((row_ids, col_ids))
+        rows, cols = torch.broadcast_tensors(torch.as_tensor(row_ids).cpu(), torch.as_tensor(col_ids).cpu())
+        return [
+            self._subterrain_specific_cfgs.get((row, col))
+            for row, col in zip(rows.flatten().tolist(), cols.flatten().tolist())
+        ]
