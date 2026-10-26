@@ -47,6 +47,20 @@ existing collinearity checks, preserving merge order and obstacle geometry.
 This optimization applies automatically to both G1 and X2, including the first
 launch. Reducing `--num-envs` does not reduce the play terrain's 4-by-10 tile grid.
 
+Playback restores `iterations` and `ls_iterations` from the checkpoint's
+`params/env.yaml` when present. Without that file, the task defaults remain in
+effect. Use `--restore-solver-settings False` to keep task defaults instead.
+If the physics solver repeatedly reports that its iteration limit was reached,
+increase the budget explicitly, for example:
+
+```bash
+instinct-play Instinct-Parkour-Target-Amp-X2-Play-v0 --load-run <run_name> --solver-iterations 50 --solver-ls-iterations 50
+```
+
+Explicit overrides take precedence over saved limits. Higher limits can change
+contact dynamics and simulation speed; compare policy behavior with the training
+settings. Hiding the overflow warning does not improve solver convergence.
+
 Playback restores observation normalizers stored in the checkpoint, using their
 definitions from the adjacent `params/agent.yaml` when available. Omitting the
 trained normalization changes policy inputs and can cause immediate falls.
