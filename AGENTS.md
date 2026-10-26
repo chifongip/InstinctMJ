@@ -33,9 +33,9 @@ adapting geometry and hardware parameters to X2.
 
 ## Build, Test, and Development Commands
 
-Use Python 3.10–3.13 with an `mjlab` 1.6.0 checkout at `../mjlab`.
+Use Python 3.10–3.13 with the `mjlab` Git revision pinned in `pyproject.toml`.
 
-- `uv sync`: install the package and locked dependencies, including editable sibling `mjlab`.
+- `uv sync`: install the package and locked dependencies, including `mjlab` from GitHub.
 - `uv run instinct-list-envs`: verify imports and task registration; append `shadowing` to filter results.
 - `uv run instinct-train Instinct-Locomotion-Flat-G1-v0`: start locomotion training.
 - `uv run instinct-play Instinct-Locomotion-Flat-G1-Play-v0 --load-run <run_name>`: play a saved run.

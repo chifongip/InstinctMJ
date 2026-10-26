@@ -64,7 +64,7 @@ explicit = true
 
 [tool.uv.sources]
 instinct_rl = { git = "https://github.com/project-instinct/instinct_rl.git" }
-mjlab = { path = "../mjlab", editable = true }
+mjlab = { git = "https://github.com/mujocolab/mjlab.git", rev = "0fb8a681136be94ffc636a3dd423cabb97d91f10" }
 warp-lang = { index = "nvidia", marker = "sys_platform != 'darwin'" }
 
 [tool.setuptools]

@@ -52,8 +52,9 @@ Torque limits follow the supplied XML: hips/knees/waist yaw use 120 Nm and wrist
 pitch/roll use 4.8 Nm, rather than the gain source's 118 and 2.2 Nm. Action scale
 is `0.25 * effort_limit / stiffness`. The asset preserves XML armature (0.03),
 friction loss (0.3) and passive damping, uses a 0.9 soft position-limit factor,
-and assumes no actuator delay. The parkour factory uses a 1 ms physics timestep
-and decimation 20 for a 50 Hz policy.
+and defaults to no actuator delay. The parkour factory enables G1's five-bus,
+per-episode 0–2 physics-step command-delay scheme and uses the same 5 ms physics
+timestep and decimation 4 for a 50 Hz policy.
 
 ## Parkour integration
 

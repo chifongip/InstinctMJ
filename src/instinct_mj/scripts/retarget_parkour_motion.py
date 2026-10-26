@@ -127,8 +127,10 @@ def convert_qpos_to_torso(
     return output, {"max_body_position_error_m": max_pos_error, "max_body_rotation_matrix_error": max_rot_error}
 
 
-def save_motion(path: Path, qpos: np.ndarray, names: list[str], fps: float) -> None:
+def save_motion(path: Path, qpos: np.ndarray, names: list[str], fps: float, *, overwrite: bool = False) -> None:
     """Write the motion schema atomically for full sequences and clips."""
+    if path.exists() and not overwrite:
+        raise FileExistsError(f"Refusing to overwrite existing motion: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.stem + ".tmp.npz")
     np.savez_compressed(
@@ -281,12 +283,17 @@ def retarget(args: argparse.Namespace, work: Path) -> None:
         max_violation = float(np.maximum(violation, 0.0).max())
         if max_violation > 1e-5:
             raise ValueError(f"X2 joint bounds exceeded by {max_violation} rad")
-        save_motion(dst, output, x2_names, fps)
+        save_motion(dst, output, x2_names, fps, overwrite=args.overwrite)
         clip_ranges = []
         edges = sorted(restart_frames) + [count]
         for clip_index, (first, last) in enumerate(zip(edges[:-1], edges[1:])):
-            relative_clip = Path("clips") / f"{Path(relative_file).stem}_{clip_index:03d}_retargetted.npz"
-            save_motion(args.output_dir / relative_clip, output[first:last], x2_names, fps)
+            # Preserve source subdirectories: different selections can contain
+            # motions with the same basename, whose clips must remain distinct.
+            source_relative = Path(relative_file)
+            relative_clip = (
+                Path("clips") / source_relative.parent / f"{source_relative.stem}_{clip_index:03d}_retargetted.npz"
+            )
+            save_motion(args.output_dir / relative_clip, output[first:last], x2_names, fps, overwrite=args.overwrite)
             split_selection["selected_files"].append(str(relative_clip))
             source_weight = selection.get("motion_weights", [1.0] * len(selection["selected_files"]))[index]
             split_selection["motion_weights"].append(source_weight * (last - first) / count)
