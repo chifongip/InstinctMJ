@@ -41,6 +41,12 @@ For the supplied pretrained checkpoint:
 instinct-play Instinct-Parkour-Target-Amp-G1-Play-v0 --checkpoint-file checkpoint/parkour/model_57000.pt
 ```
 
+Parkour startup includes terrain generation and virtual-obstacle edge merging.
+The edge merger filters distant segments by bounding box before applying the
+existing collinearity checks, preserving merge order and obstacle geometry.
+This optimization applies automatically to both G1 and X2, including the first
+launch. Reducing `--num-envs` does not reduce the play terrain's 4-by-10 tile grid.
+
 Playback restores observation normalizers stored in the checkpoint, using their
 definitions from the adjacent `params/agent.yaml` when available. Omitting the
 trained normalization changes policy inputs and can cause immediate falls.
