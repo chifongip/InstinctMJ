@@ -35,6 +35,23 @@ instinct-train Instinct-Parkour-Target-Amp-G1-v0
 instinct-play Instinct-Parkour-Target-Amp-G1-Play-v0 --load-run <run_name>
 ```
 
+For the supplied pretrained checkpoint:
+
+```bash
+instinct-play Instinct-Parkour-Target-Amp-G1-Play-v0 --checkpoint-file checkpoint/parkour/model_57000.pt
+```
+
+Playback restores observation normalizers stored in the checkpoint, using their
+definitions from the adjacent `params/agent.yaml` when available. Omitting the
+trained normalization changes policy inputs and can cause immediate falls.
+
+The supplied checkpoint also depends on its training-time physics stack.
+Playback with normalization restored has been verified on MuJoCo/MuJoCo-Warp
+3.11.0 and Warp 1.14.0. The same checkpoint repeatedly falls on the current
+3.16 stack, and raising solver budgets alone did not restore compatibility.
+Keep a separate matching environment for legacy playback; 3.16 compatibility
+remains unresolved.
+
 4. Export trained policy (`--load-run` must be provided, absolute path is recommended):
 
 ```bash
