@@ -53,6 +53,12 @@ class PlayConfig:
     onnx_model_dir: str | None = None
     no_resume: bool = False
     no_terminations: bool = False
+    restore_solver_settings: bool = True
+    """Restore solver iteration limits from the checkpoint's params/env.yaml."""
+    solver_iterations: int | None = None
+    """Override the physics solver iteration limit after restoring saved settings."""
+    solver_ls_iterations: int | None = None
+    """Override the physics solver line-search iteration limit."""
 
 
 class _ViewerEnvAdapter:
@@ -210,6 +216,35 @@ def _configure_checkpoint_normalizers(agent_cfg: dict, checkpoint: Path) -> None
             definition = {"class_name": "EmpiricalNormalization"}
         normalizers[group] = definition
         print(f"[INFO] Restoring checkpoint normalizer for {group}: {definition['class_name']}")
+
+
+def _configure_solver_iterations(env_cfg, cfg: PlayConfig, checkpoint: Path | None) -> None:
+    """Match saved iteration limits, then apply explicit playback overrides."""
+    limits = {}
+    if cfg.restore_solver_settings and checkpoint is not None:
+        config_path = checkpoint.parent / "params" / "env.yaml"
+        if config_path.is_file():
+            saved_cfg = yaml.safe_load(config_path.read_text()) or {}
+            saved_solver = saved_cfg.get("sim", {}).get("mujoco", {})
+            for name in ("iterations", "ls_iterations"):
+                if name in saved_solver:
+                    limits[name] = saved_solver[name]
+            if limits:
+                print(f"[INFO] Restoring solver iteration limits from: {config_path}")
+
+    for name, override in (("iterations", cfg.solver_iterations), ("ls_iterations", cfg.solver_ls_iterations)):
+        if override is not None:
+            limits[name] = override
+    for name, value in limits.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ValueError(f"Solver {name} must be a positive integer, got {value!r}")
+    for name, value in limits.items():
+        setattr(env_cfg.sim.mujoco, name, value)
+    if limits:
+        print(
+            f"[INFO] Physics solver limits: iterations={env_cfg.sim.mujoco.iterations}, "
+            f"ls_iterations={env_cfg.sim.mujoco.ls_iterations}"
+        )
 
 
 def _resolve_checkpoint(
@@ -455,6 +490,7 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
     elif cfg.export_onnx:
         raise ValueError("`--export-onnx` only supports `--agent trained`.")
 
+    _configure_solver_iterations(env_cfg, cfg, checkpoint)
     env_cls = load_env_cls(task_id)
     env = env_cls(
         cfg=env_cfg,

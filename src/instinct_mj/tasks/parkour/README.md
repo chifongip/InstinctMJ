@@ -47,16 +47,26 @@ existing collinearity checks, preserving merge order and obstacle geometry.
 This optimization applies automatically to both G1 and X2, including the first
 launch. Reducing `--num-envs` does not reduce the play terrain's 4-by-10 tile grid.
 
+Playback restores `iterations` and `ls_iterations` from the checkpoint's
+`params/env.yaml` when present. Without that file, the task defaults remain in
+effect. Use `--restore-solver-settings False` to keep task defaults instead.
+To override the iteration budgets for playback, for example:
+
+```bash
+instinct-play Instinct-Parkour-Target-Amp-X2-Play-v0 --load-run <run_name> --solver-iterations 50 --solver-ls-iterations 50
+```
+
+Explicit overrides take precedence over saved limits. Higher limits can change
+contact dynamics and simulation speed; compare policy behavior with the training
+settings.
+
 Playback restores observation normalizers stored in the checkpoint, using their
 definitions from the adjacent `params/agent.yaml` when available. Omitting the
 trained normalization changes policy inputs and can cause immediate falls.
 
 The supplied checkpoint also depends on its training-time physics stack.
 Playback with normalization restored has been verified on MuJoCo/MuJoCo-Warp
-3.11.0 and Warp 1.14.0. The same checkpoint repeatedly falls on the current
-3.16 stack, and raising solver budgets alone did not restore compatibility.
-Keep a separate matching environment for legacy playback; 3.16 compatibility
-remains unresolved.
+3.11.0 and Warp 1.14.0, matching the pinned default physics stack.
 
 4. Export trained policy (`--load-run` must be provided, absolute path is recommended):
 
