@@ -1,2 +1,3 @@
-from .commands_cfg import PoseVelocityCommandCfg
+from .commands_cfg import KeyboardVelocityCommandCfg, PoseVelocityCommandCfg
+from .keyboard_velocity_command import KeyboardVelocityCommand
 from .pose_velocity_command import PoseVelocityCommand

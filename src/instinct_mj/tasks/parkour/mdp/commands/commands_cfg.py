@@ -2,7 +2,23 @@ from dataclasses import MISSING, dataclass
 
 from instinct_mj.managers import CommandTermCfg
 
+from .keyboard_velocity_command import KeyboardVelocityCommand
 from .pose_velocity_command import PoseVelocityCommand
+
+
+@dataclass(kw_only=True)
+class KeyboardVelocityCommandCfg(CommandTermCfg):
+    """Native-viewer velocity input for one robot, without automatic targets."""
+
+    class_type: type = KeyboardVelocityCommand
+    resampling_time_range: tuple[float, float] = (1.0e9, 1.0e9)
+    max_forward_speed: float = 0.8
+    max_yaw_rate: float = 1.0
+    speed_step: float = 0.1
+    yaw_step: float = 0.2
+
+    def build(self, env):
+        return self.class_type(self, env)
 
 
 @dataclass(kw_only=True)

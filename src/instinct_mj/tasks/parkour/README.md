@@ -84,6 +84,48 @@ instinct-play Instinct-Parkour-Target-Amp-G1-Play-v0 --load-run <run_name> --exp
 instinct-play Instinct-Parkour-Target-Amp-G1-Play-v0 --load-run <run_name> --use-onnx
 ```
 
+## Stairs-Only Keyboard Playback
+
+Use `Instinct-Parkour-Stairs-X2-Play-v0` or
+`Instinct-Parkour-Stairs-G1-Play-v0` with an existing parkour checkpoint:
+
+```bash
+instinct-play Instinct-Parkour-Stairs-X2-Play-v0 --load-run <run_name> --viewer native --solver-iterations 50 --solver-ls-iterations 50
+```
+
+Alternatively, pass `--checkpoint-file /path/to/model.pt`. These tasks reuse the
+robot, depth camera and observation layout of the corresponding parkour policy.
+They contain one 8-by-8-meter staircase tile with 12 cm risers, 30 cm treads, a
+central landing, and level ground around it. The robot starts on the entrance
+border facing the stairs. Walking across the tile climbs to the landing and
+descends on the other side. There are no automatic position targets or terrain
+curriculum, and the camera follows the robot.
+
+Focus the native MuJoCo viewer window to use the keyboard:
+
+| Key | Action |
+| --- | --- |
+| Keypad 8 / 2 | Increase / decrease forward speed by 0.1 m/s (0 to 0.8 m/s) |
+| Keypad 4 / 6 | Increase left / right yaw rate by 0.2 rad/s (−1 to 1 rad/s) |
+| Keypad 5 | Set forward speed and yaw rate to zero |
+| Enter | Reset the robot at the entrance and clear commands |
+| Space | Pause / resume simulation |
+
+These keys avoid MuJoCo's native visualization shortcuts (including W/S/Q/E/X
+and top-row 0–5) and mjlab's viewer shortcuts. Keypad keys are distinct from
+top-row digits; enable Num Lock.
+
+Commands persist after releasing a key; press keypad 5 to request a stop.
+Keypad 2 slows the robot without requesting backward motion, and lateral speed
+remains zero to stay within the original stair command ranges. Keypad 4/6 change
+the yaw rate, rather than the heading angle. The policy still controls balance
+and foot placement; climbing ability depends on the checkpoint. Falls trigger
+the usual reset.
+
+Interactive control requires the native viewer and exactly one environment.
+`--viewer none --max-steps 100` supports automated runs with a zero initial
+command; the Viser backend does not provide keyboard control for these tasks.
+
 ## Onboard Joint Order
 
 If you deploy the exported ONNX policy in `instinct_onboard`, make sure `instinct_onboard/instinct_onboard/robot_cfgs.py` uses the `InstinctMJ` MuJoCo joint order instead of the older InstinctLab-style shoulder-first order.
