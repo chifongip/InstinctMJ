@@ -386,9 +386,31 @@ Local checks passed on the pinned mjlab 1.6.0 source with MuJoCo/MuJoCo-Warp
 3.11.0 and Warp 1.14.0 for task registration, G1/X2 parkour and stairs
 configuration, robot model compilation, and depth rendering. CPU checks also
 covered construction and metadata for all 100 curriculum tiles, G1/X2 stairs
-rollouts, and 25 inference steps from the supplied G1 checkpoint. These short
-checks do not establish learned parkour performance. GPU checkpoint resume and
-the full training preflight still need validation on this stack.
+rollouts, and 25 inference steps from the supplied G1 checkpoint.
+
+CUDA verification on an RTX 4090 passed the complete preflight with 32
+environments: all 100 terrain tiles, curriculum progression, isolated resets,
+two training iterations, exact model/optimizer checkpoint restoration, a
+resumed third iteration, and inference. Both native viewers also passed actual
+X11 keyboard input for forward/turn commands, stop, pause/resume and reset,
+with finite observations and clean shutdown, using zero policies on CPU and
+trained policies on CUDA.
+
+Production-size verification with 2048 environments remains blocked.
+The full terrain stress test reached MuJoCo-Warp 3.11's fixed limit of 50
+contacts per heightfield/geometry pair at difficulty level 8/10. A separate
+production-size run completed two training iterations, exact checkpoint
+restoration and a resumed third iteration, with finite saved checkpoints and
+123 finite scalar metric series, then hit the same limit during inference.
+Increasing the global contact or constraint allocation does not increase this
+per-pair limit. Terrain geometry and task defaults were retained, so this
+configuration has not passed the production preflight. These bounded checks
+do not establish learned parkour performance.
+
+Reports, logs, checkpoints and the native-input verification script are under
+`logs/instinct_rl/x2_parkour/verification_311_*_20261026_*`. The production
+training run records its separate terrain failure explicitly rather than
+treating the skipped terrain stress test as a pass.
 
 The motion audit found 68 of 18,932 transitions (0.36%) above URDF velocity
 limits, with a maximum ratio of 1.81. These remain AMP style references rather
