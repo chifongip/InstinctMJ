@@ -10,6 +10,7 @@ import copy
 import math
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import mujoco
 from mjlab.envs.mdp.actions import JointPositionActionCfg
@@ -63,11 +64,8 @@ from instinct_mj.terrains.virtual_obstacle.edge_cylinder_cfg import Greedyconcat
 from instinct_mj.utils.noise import CropAndResizeCfg, DepthNormalizationCfg, GaussianBlurNoiseCfg
 
 __file_dir__ = os.path.dirname(os.path.realpath(__file__))
-# NOTE: Change this to your local parkour dataset root before training / play.
-# Keep `filtered_motion_selection_filepath` under this directory unless you point it elsewhere.
-# Example:
-# _PARKOUR_DATASET_DIR = os.path.expanduser("~/your/path/to/parkour_motion_reference")
-_PARKOUR_DATASET_DIR = os.path.expanduser("~/Xyk/Datasets/data&model/parkour_motion_reference")
+# Repository-local default, matching X2's dataset-directory convention.
+_PARKOUR_DATASET_DIR = Path(__file__).resolve().parents[6] / "checkpoint/parkour/parkour_motion_reference"
 
 # ---------------------------------------------------------------------------
 # Motion reference configs
@@ -78,13 +76,9 @@ _PARKOUR_DATASET_DIR = os.path.expanduser("~/Xyk/Datasets/data&model/parkour_mot
 class AmassMotionCfg(AmassMotionCfgBase):
     """Parkour AMASS motion buffer config."""
 
-    # NOTE: Motion files are resolved from `_PARKOUR_DATASET_DIR`.
-    path: str = _PARKOUR_DATASET_DIR
+    path: str = str(_PARKOUR_DATASET_DIR)
     retargetting_func: object | None = None
-    # NOTE: If your filtered motion list uses another filename or location, update it here.
-    filtered_motion_selection_filepath: str | None = os.path.join(
-        _PARKOUR_DATASET_DIR, "parkour_motion_without_run.yaml"
-    )
+    filtered_motion_selection_filepath: str | None = str(_PARKOUR_DATASET_DIR / "parkour_motion_without_run.yaml")
     motion_start_from_middle_range: list[float] = field(default_factory=lambda: [0.0, 0.9])
     motion_start_height_offset: float = 0.0
     ensure_link_below_zero_ground: bool = False
@@ -176,6 +170,7 @@ def instinct_g1_parkour_amp_env_cfg(
     *,
     play: bool = False,
     shoe: bool = True,
+    dataset_dir: str | Path | None = None,
 ) -> G1ParkourAmpEnvCfg:
     """Build the base G1 parkour AMP environment configuration.
 
@@ -183,6 +178,7 @@ def instinct_g1_parkour_amp_env_cfg(
       play: If True, apply play-mode overrides (fewer envs, relaxed
         termination, etc.).
       shoe: If True, apply shoe-specific adjustments (default is True).
+      dataset_dir: Directory containing G1 motions and their selection YAML.
 
     Returns:
       A ``G1ParkourAmpEnvCfg`` instance with parkour settings applied.
@@ -375,6 +371,11 @@ def instinct_g1_parkour_amp_env_cfg(
         ),
     )
     motion_reference_sensor_cfg = copy.deepcopy(motion_reference_cfg)
+    if dataset_dir is not None:
+        dataset_path = Path(dataset_dir).expanduser().resolve()
+        buffer_cfg = motion_reference_sensor_cfg.motion_buffers["run_walk"]
+        buffer_cfg.path = str(dataset_path)
+        buffer_cfg.filtered_motion_selection_filepath = str(dataset_path / "parkour_motion_without_run.yaml")
     existing_sensors = tuple(
         sensor_cfg for sensor_cfg in cfg.scene.sensors if sensor_cfg.name != motion_reference_sensor_cfg.name
     )
@@ -975,6 +976,7 @@ def instinct_g1_parkour_amp_final_cfg(
     *,
     play: bool = False,
     shoe: bool = True,
+    dataset_dir: str | Path | None = None,
 ) -> G1ParkourAmpEnvCfg:
     """Create the final G1 parkour AMP env configuration.
 
@@ -983,12 +985,13 @@ def instinct_g1_parkour_amp_final_cfg(
         termination, etc.).
       shoe: If True, apply shoe-specific adjustments (default is True,
         matching the original ``G1ParkourEnvCfg``).
+      dataset_dir: Directory containing G1 motions and their selection YAML.
 
     Returns:
       A fully-built ``G1ParkourAmpEnvCfg`` instance.
     """
     # Build base parkour config (already includes play overrides if requested)
-    cfg = instinct_g1_parkour_amp_env_cfg(play=play, shoe=shoe)
+    cfg = instinct_g1_parkour_amp_env_cfg(play=play, shoe=shoe, dataset_dir=dataset_dir)
 
     # Apply play-mode viewer overrides
     if play:
