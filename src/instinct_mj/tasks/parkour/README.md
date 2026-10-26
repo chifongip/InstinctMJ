@@ -12,17 +12,17 @@ motions, environment factory and RL configuration for X2.
 - `Instinct-Parkour-Target-Amp-G1-v0` (train)
 - `Instinct-Parkour-Target-Amp-G1-Play-v0` (play)
 
-1. Go to `config/g1/g1_parkour_target_amp_cfg.py` and set the `path` and `filtered_motion_selection_filepath` in `AmassMotionCfg` to the reference motion you want to use.
+1. Place the G1 motion dataset under `checkpoint/parkour/parkour_motion_reference/`.
+   It must contain `parkour_motion_without_run.yaml` and all `.npz` files listed
+   in that YAML. Paths resolve relative to this checkout, independently of the
+   current working directory. Motion data is Git-ignored and must be copied
+   separately to a training server.
+
+   For another location, use the Python factory override:
 
    ```python
-   path: str = os.path.expanduser("~/your/path/to/parkour_motion_reference")
-   filtered_motion_selection_filepath: str | None = os.path.join(
-       path,
-       "parkour_motion_without_run.yaml",
-   )
+   cfg = instinct_g1_parkour_amp_final_cfg(dataset_dir="/path/to/parkour_motion_reference")
    ```
-
-   Keep the selected motion `.npz` files and the selection `.yaml` aligned with the same dataset root unless you intentionally split them.
 
 2. Train the policy:
 ```bash
