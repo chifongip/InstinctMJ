@@ -384,11 +384,35 @@ flags are reported separately from collision/capacity overflows.
 Use `--num-envs 32` for local validation; registered task defaults stay unchanged.
 Run the production-batch preflight on the server before full training.
 
-Local checks passed with 32 environments on mjlab revision `8bb2bc9e1`,
-MuJoCo/MuJoCo-Warp 3.16 and Warp 1.18, including all 100 tiles, checkpoint
-resume and finite training metrics. Shared motion parsing also matches both
-robots' MuJoCo body frames, including off-origin joint pivots. Full training
-and learned parkour performance remain unverified.
+Verification on 2026-10-26 used Python 3.11, mjlab revision `8bb2bc9e1`,
+MuJoCo/MuJoCo-Warp 3.16.0, Warp 1.18.0 and Torch 2.14.1 on an RTX 4090.
+The complete 32-environment preflight passed all 100 terrain tiles, curriculum
+progression, isolated resets, two training iterations, exact model/optimizer
+restoration, a resumed third iteration, inference and 123 finite scalar metric
+series. Solver limits were recorded separately: one iteration-limit world-step
+and 322 line-search-limit world-steps out of 108,416 physics world-steps.
+
+A separate run with the unchanged 2048-environment defaults passed training,
+exact checkpoint restoration, resume and post-training inference. It produced
+123 finite scalar metric series and peaked at 5.60 GB of Torch allocations.
+The full production terrain stress test nevertheless failed at difficulty
+level 10/10, reaching the fixed 50-contact limit per heightfield/geometry pair.
+The downgraded 3.11 stack also failed this stress test (at level 8/10), and
+failed post-training inference in its separate production-size run. The
+heightfield capacity blocker is therefore present on both stacks. Terrain
+geometry and task defaults were retained; neither stack has passed the full
+production preflight.
+
+Both native viewers passed hardware-style X11 keyboard input for forward/turn
+commands, stop, pause/resume and reset, with finite observations and clean
+shutdown, using zero policies on CPU and trained policies on CUDA. The supplied
+G1 CUDA-saved checkpoint also passed 25 finite inference steps on CPU. These
+bounded checks do not establish learned parkour performance or resolve the
+legacy G1 policy's longer-term behavior on 3.16.
+
+Reports, logs, checkpoints and verification scripts are under
+`logs/instinct_rl/x2_parkour/verification_316_*_20261026_*`. The cross-stack
+summary is `logs/instinct_rl/x2_parkour/verification_stack_comparison_20261026.json`.
 
 The motion audit found 68 of 18,932 transitions (0.36%) above URDF velocity
 limits, with a maximum ratio of 1.81. These remain AMP style references rather
