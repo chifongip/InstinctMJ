@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -236,6 +237,20 @@ def _configure_checkpoint_normalizers(agent_cfg: dict, checkpoint: Path) -> None
             definition = {"class_name": "EmpiricalNormalization"}
         normalizers[group] = definition
         print(f"[INFO] Restoring checkpoint normalizer for {group}: {definition['class_name']}")
+
+
+def _load_playback_checkpoint(runner, checkpoint: Path, device: str) -> None:
+    """Map saved CUDA tensors to CPU while retaining the runner's load hooks."""
+    if torch.device(device).type != "cpu":
+        runner.load(str(checkpoint))
+        return
+    # instinct_rl's loader does not expose map_location. Remap a temporary copy
+    # so its algorithm, normalizer and checkpoint-manipulation hooks still run.
+    state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    with tempfile.TemporaryDirectory(prefix="instinct-play-") as directory:
+        mapped_checkpoint = Path(directory) / checkpoint.name
+        torch.save(state, mapped_checkpoint)
+        runner.load(str(mapped_checkpoint))
 
 
 def _configure_solver_iterations(env_cfg, cfg: PlayConfig, checkpoint: Path | None) -> None:
@@ -575,7 +590,7 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
         if checkpoint is not None:
             if runner is None:
                 raise RuntimeError("Runner is not initialized.")
-            runner.load(str(checkpoint))
+            _load_playback_checkpoint(runner, checkpoint, device)
             print(f"[INFO] Loaded checkpoint: {checkpoint}")
 
         if cfg.export_onnx:

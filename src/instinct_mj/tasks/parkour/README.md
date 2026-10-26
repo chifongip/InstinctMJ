@@ -63,6 +63,8 @@ settings.
 Playback restores observation normalizers stored in the checkpoint, using their
 definitions from the adjacent `params/agent.yaml` when available. Omitting the
 trained normalization changes policy inputs and can cause immediate falls.
+With `--device cpu`, CUDA-saved checkpoint tensors are remapped through a
+temporary copy before the runner restores its state; the original file is preserved.
 
 The supplied checkpoint also depends on its training-time physics stack.
 Playback with normalization restored has been verified on MuJoCo/MuJoCo-Warp
@@ -382,10 +384,11 @@ Run the production-batch preflight on the server before full training.
 
 Local checks passed on the pinned mjlab 1.6.0 source with MuJoCo/MuJoCo-Warp
 3.11.0 and Warp 1.14.0 for task registration, G1/X2 parkour and stairs
-configuration, robot model compilation, and playback/depth-tool imports.
-The complete curriculum, checkpoint resume, and training preflight still need
-validation on this stack. Full training and learned parkour performance remain
-unverified.
+configuration, robot model compilation, and depth rendering. CPU checks also
+covered construction and metadata for all 100 curriculum tiles, G1/X2 stairs
+rollouts, and 25 inference steps from the supplied G1 checkpoint. These short
+checks do not establish learned parkour performance. GPU checkpoint resume and
+the full training preflight still need validation on this stack.
 
 The motion audit found 68 of 18,932 transitions (0.36%) above URDF velocity
 limits, with a maximum ratio of 1.81. These remain AMP style references rather
