@@ -91,24 +91,26 @@ X2_PARKOUR_SYMMETRIC_LINK_MAPPING = [0, 1, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 1
 X2_DEPTH_CAMERA_BODY = "head_pitch_link"
 X2_DEPTH_CAMERA_POS = (0.05761, -0.011183, -0.04837)
 X2_DEPTH_CAMERA_QUAT_ROS = (0.29884467067118387, 0.6408510171708242, 0.6408533711523742, 0.2988457683909694)
-# Gemini335 depth specifications (not the RGB channel's 94 x 68 degree FOV).
-X2_DEPTH_CAMERA_FOV = (90.0, 65.0)
-X2_DEPTH_CAMERA_NATIVE_RESOLUTION = (1280, 800)
-# AimDK's published depth_image topic rate; hardware supports up to 60 fps.
-X2_DEPTH_CAMERA_UPDATE_PERIOD = 1.0 / 30.0
+# Gemini335 16:9 depth mode: Orbbec datasheet V1.6, pp. 24 and 36.
+# Match the paper's 480x270 at 60 Hz capture mode, not the 1280x800 mode.
+X2_DEPTH_CAMERA_FOV = (90.0, 60.0)
+X2_DEPTH_CAMERA_NATIVE_RESOLUTION = (480, 270)
+X2_DEPTH_CAMERA_UPDATE_PERIOD = 1.0 / 60.0
 
 
 def get_agibot_x2_depth_camera_cfg(
     *,
     name: str = "camera",
-    width: int = 80,
-    height: int = 50,
+    width: int = 64,
+    height: int = 36,
     max_distance: float = 2.5,
 ) -> NoisyGroupedRayCasterCameraCfg:
     """Build raw X2 depth sensing with the URDF pose and nominal depth FOV.
 
-    Add the result to ``cfg.scene.sensors``. The default image is downsampled
-    16 times from 1280x800, retaining both FOV axes and the upside-down image.
+    Add the result to ``cfg.scene.sensors``. Simulation raycasts at 64x36,
+    matching the FOV of the downsampled 480x270 capture mode and retaining
+    its upside-down orientation. Sensing runs at policy steps; the 1/60 s
+    refresh period produces a fresh image on every 50 Hz sensing call.
     ``max_distance`` is a task raycast/clipping limit, not a hardware spec.
     Noise, cropping, normalization and observation history are task settings.
     """
@@ -358,7 +360,7 @@ def instinct_x2_parkour_amp_env_cfg(
             max_distance=10.0,
             debug_vis=False,
         ),
-        get_agibot_x2_depth_camera_cfg(width=64, height=36),
+        get_agibot_x2_depth_camera_cfg(),
     )
     # Preserve the physical mount/FOV, then use G1's upright image convention,
     # crop, blur and normalization. Raw sensor output remains upside down.
@@ -370,8 +372,8 @@ def instinct_x2_parkour_amp_env_cfg(
         "depth_normalization": DepthNormalizationCfg(depth_range=(0.0, 2.5), normalize=True, output_range=(0.0, 1.0)),
     }
     camera.min_distance = 0.1
-    # Retain G1's history capacity. Sampling every three 30 Hz camera frames
-    # matches its five-frame spacing at 50 Hz: eight images span 0.7 seconds.
+    # As in G1, sensing runs once per 50 Hz policy step. The 60 Hz hardware
+    # mode supplies a fresh image each step; five-sample spacing spans 0.7 s.
     camera.data_histories = {"distance_to_image_plane_noised": 37}
 
     motion_reference_sensor_cfg = copy.deepcopy(motion_reference_cfg)
@@ -482,7 +484,7 @@ def instinct_x2_parkour_amp_env_cfg(
             params={
                 "data_type": "distance_to_image_plane_noised_history",
                 "sensor_cfg": SceneEntityCfg("camera"),
-                "history_skip_frames": 3,
+                "history_skip_frames": 5,
                 "num_output_frames": 8,
                 "delayed_frame_ranges": (0, 1),
                 "debug_vis": False,
@@ -547,7 +549,7 @@ def instinct_x2_parkour_amp_env_cfg(
             params={
                 "data_type": "distance_to_image_plane_noised_history",
                 "sensor_cfg": SceneEntityCfg("camera"),
-                "history_skip_frames": 3,
+                "history_skip_frames": 5,
                 "num_output_frames": 8,
                 "delayed_frame_ranges": (0, 1),
                 "debug_vis": False,
