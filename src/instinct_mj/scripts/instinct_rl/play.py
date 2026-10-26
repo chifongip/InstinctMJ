@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -22,6 +23,8 @@ from mjlab.viewer import NativeMujocoViewer, ViserPlayViewer
 
 import instinct_mj.tasks  # noqa: F401
 from instinct_mj.rl import InstinctRlVecEnvWrapper
+from instinct_mj.tasks.parkour.mdp.commands.commands_cfg import KeyboardVelocityCommandCfg
+from instinct_mj.tasks.parkour.mdp.commands.keyboard_velocity_command import KEYBOARD_HELP
 from instinct_mj.tasks.registry import (
     list_tasks,
     load_env_cfg,
@@ -178,6 +181,23 @@ def _patch_world_free_camera(viewer: NativeMujocoViewer) -> None:
     viewer._setup_camera = _wrapped_setup_camera
 
 
+def _run_native_viewer(viewer: NativeMujocoViewer, num_steps: int | None) -> None:
+    """Wait for MuJoCo's render thread before releasing models or exiting."""
+    existing_threads = set(threading.enumerate())
+    try:
+        viewer.run(num_steps=num_steps)
+    finally:
+        viewer.close()
+        # MuJoCo's passive viewer uses a daemon named after _launch_internal.
+        # Handle.close() requests exit without joining it. Otherwise GLFW's
+        # process-exit cleanup can race the render thread's GLX teardown.
+        for thread in threading.enumerate():
+            if thread not in existing_threads and thread.name.endswith("(_launch_internal)"):
+                thread.join(timeout=5.0)
+                if thread.is_alive():
+                    raise RuntimeError("MuJoCo render thread did not stop after closing the viewer.")
+
+
 def _build_dummy_policy(agent_mode: str, action_shape: tuple[int, ...], device: str):
     if agent_mode == "zero":
 
@@ -224,11 +244,19 @@ def _configure_solver_iterations(env_cfg, cfg: PlayConfig, checkpoint: Path | No
     if cfg.restore_solver_settings and checkpoint is not None:
         config_path = checkpoint.parent / "params" / "env.yaml"
         if config_path.is_file():
-            saved_cfg = yaml.safe_load(config_path.read_text()) or {}
-            saved_solver = saved_cfg.get("sim", {}).get("mujoco", {})
-            for name in ("iterations", "ls_iterations"):
-                if name in saved_solver:
-                    limits[name] = saved_solver[name]
+            # Older snapshots contain Python-tagged enums elsewhere in the
+            # environment config. Compose the document without constructing
+            # objects, then safely load only the solver values we need.
+            saved_solver = yaml.compose(config_path.read_text(), Loader=yaml.SafeLoader)
+            for component in ("sim", "mujoco"):
+                if not isinstance(saved_solver, yaml.MappingNode):
+                    saved_solver = None
+                    break
+                saved_solver = next((value for key, value in saved_solver.value if key.value == component), None)
+            if isinstance(saved_solver, yaml.MappingNode):
+                for key, value in saved_solver.value:
+                    if key.value in ("iterations", "ls_iterations"):
+                        limits[key.value] = yaml.safe_load(yaml.serialize(value))
             if limits:
                 print(f"[INFO] Restoring solver iteration limits from: {config_path}")
 
@@ -465,6 +493,12 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
 
     if cfg.num_envs is not None:
         env_cfg.scene.num_envs = cfg.num_envs
+    keyboard_mode = isinstance(env_cfg.commands.get("base_velocity"), KeyboardVelocityCommandCfg)
+    if keyboard_mode:
+        if env_cfg.scene.num_envs != 1:
+            raise ValueError("Stairs keyboard playback requires --num-envs 1.")
+        if viewer_backend == "viser":
+            raise ValueError("Stairs keyboard playback requires --viewer native (or --viewer none for automated runs).")
     if cfg.video_height is not None:
         env_cfg.viewer.height = cfg.video_height
     if cfg.video_width is not None:
@@ -582,10 +616,14 @@ def run_play(task_id: str, cfg: PlayConfig) -> None:
     rollout_steps = _resolve_rollout_steps(cfg)
 
     if viewer_backend == "native":
-        viewer = NativeMujocoViewer(viewer_env, policy)
+        key_callback = None
+        if keyboard_mode:
+            key_callback = vec_env.unwrapped.command_manager.get_term("base_velocity").handle_key
+            print(f"[Keyboard] {KEYBOARD_HELP}")
+        viewer = NativeMujocoViewer(viewer_env, policy, key_callback=key_callback)
         _patch_world_free_camera(viewer)
         _force_viewer_realtime_1x(viewer)
-        viewer.run(num_steps=rollout_steps)
+        _run_native_viewer(viewer, rollout_steps)
     elif viewer_backend == "viser":
         viewer = ViserPlayViewer(viewer_env, policy)
         _force_viewer_realtime_1x(viewer)

@@ -20,6 +20,20 @@ def x2_parkour_amp_instinct_rl_cfg():
     return _cfg()
 
 
+def _stairs_play_env_cfg():
+    from ..stairs_play_cfg import configure_stairs_play
+
+    return configure_stairs_play(_parkour_amp_env_cfg(play=True))
+
+
+register_instinct_task(
+    task_id="Instinct-Parkour-Stairs-X2-Play-v0",
+    env_cfg_factory=_stairs_play_env_cfg,
+    play_env_cfg_factory=_stairs_play_env_cfg,
+    instinct_rl_cfg_factory=x2_parkour_amp_instinct_rl_cfg,
+)
+
+
 register_instinct_task(
     task_id="Instinct-Parkour-Target-Amp-X2-v0",
     env_cfg_factory=lambda: _parkour_amp_env_cfg(play=False),
