@@ -7,9 +7,11 @@ from dataclasses import dataclass, field
 from instinct_mj.rl import (
     InstinctRlConv2dHeadCfg,
     InstinctRlEncoderMoEActorCriticCfg,
+    InstinctRlNormalizerCfg,
     InstinctRlOnPolicyRunnerCfg,
     InstinctRlPpoAlgorithmCfg,
 )
+from instinct_mj.tasks.config.rl_utils import default_policy_critic_normalizers
 
 
 @dataclass(kw_only=True)
@@ -92,6 +94,8 @@ class X2ParkourPPORunnerCfg(InstinctRlOnPolicyRunnerCfg):
     resume: bool = False
     load_run: str = "^(?!_play$).*"
     empirical_normalization: bool = False
+    # Match G1 parkour policy and critic input normalization.
+    normalizers: dict[str, InstinctRlNormalizerCfg] = field(default_factory=default_policy_critic_normalizers)
     policy: object = field(default_factory=lambda: MoEPolicyCfg())
     algorithm: object = field(default_factory=lambda: AmpAlgoCfg())
 
